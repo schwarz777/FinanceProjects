@@ -1,6 +1,7 @@
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
+from dash.dependencies import Input, Output
 import pandas as pd
 import plotly.graph_objs as go
 import sys
@@ -13,16 +14,11 @@ sys.path.append(r'C:/Users/MichaelSchwarz/PycharmProjects/FinanceProjects/Portfo
 import evaluate_portfolio_exposure as epe
 
 app = dash.Dash()
+
 colors = {
     'background': '#111111',
     'text': '#7FDBFF'
 }
-
-df = pd.read_csv(
-    'https://gist.githubusercontent.com/chriddyp/' +
-    '5d1ea79569ed194d432e56108a04d188/raw/' +
-    'a9f9e8076b837d541398e999dcbac2b2826a81f8/' +
-    'gdp-life-exp-2007.csv')
 
 markdown_text = '''
 ###world is beautiful \n
@@ -41,21 +37,26 @@ dropdownLabClusters = pd.read_sql(query, con=cnx)
 optionsmenu_own = [dict(label=i, value=i) for i in dropdownLabClusters["NameMotherCluster"]]
 
 app.layout = html.Div([
-                          dcc.Markdown(children=markdown_text),
-                          dcc.Dropdown(
-                              options=optionsmenu_own,
-                              value='GICS'
-                          ),
-                          html.Label('Please enter your comment!'),
-                          dcc.Input(value='MTL', type='text'),
+    html.H2("Cluster Split"),
+    dcc.Markdown(children=markdown_text),
+    dcc.Dropdown(
+        id='dropdown-id',
+        options=optionsmenu_own,
+        value='GICS'
+    ),
+    html.Label('Please enter your comment!'),
+    dcc.Input(value='cheap shares are great!', type='text'),
+    dcc.Graph(id='sunburst-graph')
+])
 
-                          dcc.Graph(
-                              id='life-exp-vs-gdp',
-                              figure=epe.evaluate_clusters_in_sunburst(most_inner_cluster='GICS')
-
-                          )
-]
+@app.callback(
+    dash.dependencies.Output('sunburst-graph', 'figure'),
+    [dash.dependencies.Input('dropdown-id', 'value')]
 )
+def update_output_div(input_value):
+    f=epe.evaluate_clusters_in_sunburst(most_inner_cluster=input_value)
+    return(f)
+
 
 
 if __name__ == '__main__':
