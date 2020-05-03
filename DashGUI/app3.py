@@ -1,16 +1,17 @@
 # -*- coding: utf-8 -*-
 import sys
+
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
-import dash_auth
 import pandas as pd
+import sys
+sys.path.append(r'C:\Users\MichaelSchwarz\PycharmProjects\FinanceProjects')
+import MyFuncGeneral as my
 
-
-
-sys.path.append("C:/Users/MichaelSchwarz/.spyder-py3/myPyCode/")
+sys.path.append(r'C:/Users/MichaelSchwarz/PycharmProjects/FinanceProjects/PortfolioConstruction')
 import evaluate_portfolio_exposure as epe
-import myFuncGeneral as my
+
 
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
@@ -50,7 +51,7 @@ app.layout = html.Div([
             ),
 
             dcc.Graph(id='NameMotherCluster',
-                      figure=epe.evaluate_clusters_in_sunburst(MostInnerCluster='GICS')
+                      figure=epe.evaluate_clusters_in_sunburst(most_inner_cluster='GICS')
                       # epe.evaluate_portfolio_exposure(FilterCompanies="all", CategoryType="MSSC",DrilldownLevel=4)
                       )
         ], className="six columns"),
@@ -69,7 +70,7 @@ app.css.append_css({
 })
 
 figure = epe.evaluate_clusters_in_sunburst(
-    MostInnerCluster='GICS')  # epe.evaluate_portfolio_exposure(FilterCompanies="all", CategoryType="MSSC",DrilldownLevel=4)
+    most_inner_cluster='GICS')  # epe.evaluate_portfolio_exposure(FilterCompanies="all", CategoryType="MSSC",DrilldownLevel=4)
 
 if __name__ == '__main__':
     app.run_server(debug=True)

@@ -4,8 +4,6 @@ import dash_html_components as html
 import plotly.graph_objs as go
 import pandas as pd
 
-
-
 df = pd.read_excel(
     "https://github.com/chris1610/pbpython/blob/master/data/salesfunnel.xlsx?raw=True"
 )
@@ -56,9 +54,9 @@ def update_graph(Manager):
     return {
         'data': [trace1, trace2, trace3, trace4],
         'layout':
-        go.Layout(
-            title='Customer Order Status for {}'.format(Manager),
-            barmode='stack')
+            go.Layout(
+                title='Customer Order Status for {}'.format(Manager),
+                barmode='stack')
     }
 
 
