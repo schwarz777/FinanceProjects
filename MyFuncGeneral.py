@@ -4,8 +4,6 @@ Created on Sun Jun 16 13:23:53 2019
 
 @author: MichaelSchwarz
 """
-
-
 # packages
 # pip install yahoo-finance
 # pip install yfinance
@@ -61,8 +59,30 @@ def cnx_mysqldb(database='fuyu'):
 # results = [r.fetchall() for r in cursor.stored_results()]
 # dfres = pd.DataFrame(results[0], columns = ['parent','child','members'])
 
+#get prices
+def get_tickers_history(start, end, tick_list, this_price):
+    """ arg: `this_price` can take str Open, High, Low, Close, Volume"""
+    import pandas as pd
+    import pandas_datareader.data as pdr
+    #make an empty dataframe in which we will append columns
+    dat = pd.DataFrame([])
+    # loop here.
+    for idx, i in enumerate(tick_list):
+        total = pdr.DataReader(i, 'yahoo', start, end)
+        dat[i] = total[this_price]
+    return dat
 
-###help functions
+#example
+# import datetime as dt
+# tickers = ['ABBN.SW', 'PRX.AS', 'NSI.AS','KGX.DE','MSFT'] # add as many tickers
+# start = dt.datetime(2017, 3,31)
+# end = dt.datetime.today()
+# tickhist = get_tickers_history(start, end, tickers, 'Close')
+# tickhist.plot()
+
+
+
+
 def col(df):
     return list(df.columns.values)
 
@@ -73,21 +93,25 @@ def get_source(func):
     print(lines)
 
 
+
+
+
+
 # STUFF###########
 ####alternative zu pandas....###
-def query_mysqldb(query, database='fuyu'):
-    try:
-        cnx = cnx_mysqldb(database)
-        cursor = cnx.cursor()
-        cursor.execute(query)
-        row = cursor.fetchone()
-        while row is not None:
-            print(row)
-            row = cursor.fetchone()
-    except Error as e:
-        print(e)
-    finally:
-        cursor.close()
-        cnx.close()
+# def query_mysqldb(query, database='fuyu'):
+#     try:
+#         cnx = cnx_mysqldb(database)
+#         cursor = cnx.cursor()
+#         cursor.execute(query)
+#         row = cursor.fetchone()
+#         while row is not None:
+#             print(row)
+#             row = cursor.fetchone()
+#     except Error as e:
+#         print(e)
+#     finally:
+#         cursor.close()
+#         cnx.close()
 # query_mysqldb("select * from issue")
 ####end....######
