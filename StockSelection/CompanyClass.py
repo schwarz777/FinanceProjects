@@ -8,15 +8,18 @@ Created on Mon Oct 14 19:37:30 2019
 
 class Company:
     """Represents a company, with a ticker."""
-
     # A class variable, counting the number of Companies
+    instances = []
     population = 0
+
 
     def __init__(self, ticker):
         """Initializes the company."""
         self.ticker = ticker
+        Company.instances.append(self)
         print("(Initializing {})".format(self.ticker))
         Company.population += 1
+
 
         "get all keyinputs for this Ticker from mySQL"
         import sys
@@ -26,7 +29,6 @@ class Company:
         query = "select Set_name, KeyInput_name,period_end_date,KeyInput_value from v_key_inputs " + \
                 "where fk_scope = 1 and reporting_duration_in_months=12 and " + \
                 "Ticker_yh='" + ticker + "'"
-
         import pandas as pd
         self.Fundamentals = pd.read_sql(query, con=cnx)
 
@@ -39,7 +41,8 @@ class Company:
         import pandas_datareader.data as pdr
         import datetime
         to_date = datetime.date.today()
-        if not from_date: from_date = to_date - datetime.timedelta(days=1)
+        if not from_date:
+            from_date = to_date - datetime.timedelta(days=1)
         px = pdr.DataReader(self.ticker, 'yahoo', from_date, to_date)
 
         f = self.Fundamentals
@@ -64,18 +67,22 @@ class Company:
     def die(self):
         """removal of a company"""
         print("Company", self.ticker, "left the universe")
+        Company.instances.remove(self)
         del self
         Company.population -= 1
 
     @classmethod
     def how_many(cls):
-        """Prints the current number of companes."""
+        """Prints the current number of companis."""
         print("We have {:d} companies.".format(cls.population))
 
 
-# example
-c1 = Company("ABT.TO")
-ticker = "ABT.TO"  # for debugging
-c1.iam()
-c1.valuation()
-Company.how_many()
+if __name__ == '__main__':
+    ticker = "IBM"  # for debugging
+    c1 = Company(ticker)
+    c1.iam()
+    c1.valuation()
+    CurrentUniverse = {id(instance): instance.ticker for instance in Company.instances}
+    Company.how_many()
+    print(CurrentUniverse)
+    print(c1.Fundamentals)
