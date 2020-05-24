@@ -12,7 +12,6 @@ class Company:
     instances = []
     population = 0
 
-
     def __init__(self, ticker):
         """Initializes the company."""
         self.ticker = ticker
@@ -20,10 +19,9 @@ class Company:
         print("(Initializing {})".format(self.ticker))
         Company.population += 1
 
-
         "get all keyinputs for this Ticker from mySQL"
         import sys
-        sys.path.append(r'C:\Users\MichaelSchwarz\.spyder-py3\myPyCode')
+        sys.path.append(r'C:\Users\MichaelSchwarz\PycharmProjects\FinanceProjects')
         import MyFuncGeneral as My
         cnx = My.cnx_mysqldb('fuyu_jibengong')
         query = "select Set_name, KeyInput_name,period_end_date,KeyInput_value from v_key_inputs " + \
@@ -73,8 +71,17 @@ class Company:
 
     @classmethod
     def how_many(cls):
-        """Prints the current number of companis."""
+        """Prints the current number of companies."""
         print("We have {:d} companies.".format(cls.population))
+    # def remove_all_companies():
+    #     instance.die() or instance in Company.instances
+    def  compare(cls, start, end):  ##add: ,comparison_way=prices, prices normalized, prices_to_invest,valuations,...
+        """plots the current members of Companies in the defined way"""
+        import sys
+        sys.path.append(r'C:\Users\MichaelSchwarz\PycharmProjects\FinanceProjects')
+        import MyFuncGeneral as My
+        tickers = {instance.ticker for instance in Company.instances}
+        My.get_tickers_history(start, end, tickers, 'Close').plot()
 
 
 if __name__ == '__main__':
@@ -84,5 +91,8 @@ if __name__ == '__main__':
     c1.valuation()
     CurrentUniverse = {id(instance): instance.ticker for instance in Company.instances}
     Company.how_many()
+    Company.compare(Company, start="2019-01-05", end="2020-05-25")
     print(CurrentUniverse)
     print(c1.Fundamentals)
+
+    # Todo: Company.remove_all_companies()
