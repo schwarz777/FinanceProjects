@@ -12,7 +12,6 @@ import sys
 sys.path.append(r'C:\Users\MichaelSchwarz\PycharmProjects\FinanceProjects')
 import MyFuncGeneral as My
 
-
 # create data frame to fill in opt-inputs
 d = {'YahooTicker': [], 'lb': [], 'ub': [], 'signal': []}
 opt_in = pd.DataFrame(data=d)
@@ -94,6 +93,6 @@ x0 = numpy.ones(n)
 OptRes = opt.optimize(x0)
 
 # optimize2 using cvxpy
-import cvxpy
+# import cvxpy
 
 # display results
