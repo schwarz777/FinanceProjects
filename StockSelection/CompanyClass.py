@@ -12,21 +12,21 @@ class Company:
     instances = []
     population = 0
 
-    def __init__(self, ticker):
+    def __init__(self, CompanyTicker):
         """Initializes the company."""
-        self.ticker = ticker
+        self.ticker = CompanyTicker
         Company.instances.append(self)
         print("(Initializing {})".format(self.ticker))
         Company.population += 1
 
-        "get all keyinputs for this Ticker from mySQL"
+        "get all key inputs for this Ticker from mySQL"
         import sys
         sys.path.append(r'C:\Users\MichaelSchwarz\PycharmProjects\FinanceProjects')
         import MyFuncGeneral as My
         cnx = My.cnx_mysqldb('fuyu_jibengong')
         query = "select Set_name, KeyInput_name,period_end_date,KeyInput_value from v_key_inputs " + \
                 "where fk_scope = 1 and reporting_duration_in_months=12 and " + \
-                "Ticker_yh='" + ticker + "'"
+                "Ticker_yh='" + CompanyTicker + "'"
         import pandas as pd
         self.Fundamentals = pd.read_sql(query, con=cnx)
 
@@ -73,26 +73,44 @@ class Company:
     def how_many(cls):
         """Prints the current number of companies."""
         print("We have {:d} companies.".format(cls.population))
+
     # def remove_all_companies():
     #     instance.die() or instance in Company.instances
-    def  compare(cls, start, end):  ##add: ,comparison_way=prices, prices normalized, prices_to_invest,valuations,...
+    @classmethod
+    def compare(cls, start, end,
+                normalize_by='shortest'):  # add: ,comparison_way=prices, prices normalized, prices_to_invest,valuations,...
         """plots the current members of Companies in the defined way"""
         import sys
         sys.path.append(r'C:\Users\MichaelSchwarz\PycharmProjects\FinanceProjects')
         import MyFuncGeneral as My
-        tickers = {instance.ticker for instance in Company.instances}
-        My.get_tickers_history(start, end, tickers, 'Close').plot()
+        tickers = {instance.ticker for instance in cls.instances}
+        df = My.get_tickers_history(start, end, tickers, 'Close', normalize_by)
+        import plotly.graph_objects as go
+        fig_to_plot = go.Figure([{
+            'x': df.index,
+            'y': df[col],
+            'name': col
+        } for col in df.columns])
+        return fig_to_plot
+
+    @staticmethod
+    def remove_all_companies():
+        Company.instances = []
+        Company.population = 0
 
 
 if __name__ == '__main__':
-    ticker = "IBM"  # for debugging
+    ticker = "PRX.AS"  # for debugging
     c1 = Company(ticker)
     c1.iam()
     c1.valuation()
+    c2 = Company("EVD.DE")
     CurrentUniverse = {id(instance): instance.ticker for instance in Company.instances}
     Company.how_many()
-    Company.compare(Company, start="2019-01-05", end="2020-05-25")
-    print(CurrentUniverse)
-    print(c1.Fundamentals)
-
-    # Todo: Company.remove_all_companies()
+    Company.compare(c1, start="2015-01-05", end="2020-05-25")
+    fig = c1.compare(start="2020-01-05", end="2020-05-25")
+    fig.show()
+#    Company.remove_all_companies()
+#   tickers = {instance.ticker for instance in Company.instances}
+#  print(CurrentUniverse)
+# print(c1.Fundamentals)
