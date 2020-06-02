@@ -9,6 +9,7 @@ Evaluate a portfolio's exposure after different categorizations
 
 """
 
+
 def evaluate_portfolio_exposure(FilterCompanies="all", CategoryType="GICS", DrilldownLevel=1):
     """gets the chosen companies with its categorisations from mySQL, adds prices and pie-charts it 
     
@@ -20,14 +21,12 @@ def evaluate_portfolio_exposure(FilterCompanies="all", CategoryType="GICS", Dril
     """
     import sys
     sys.path.append(r'C:\Users\MichaelSchwarz\PycharmProjects\FinanceProjects')
+    import MyFuncGeneral as My
 
     # checks
     assert FilterCompanies in str(["all", "CurrentPortfolio"])
     assert CategoryType in str(["GICS", "MSHN", "MSRC", "MSSC"])
     assert DrilldownLevel in range(1, 6)
-
-    import MyFuncGeneral as My
-
     cnx = My.cnx_mysqldb('fuyu')
     if FilterCompanies != "CurrentPortfolio":
 
@@ -54,7 +53,7 @@ def evaluate_portfolio_exposure(FilterCompanies="all", CategoryType="GICS", Dril
     import plotly.express as px
     fig = px.pie(comp_with_cat, values='InvAmount', names='Ticker_yahoo', title='My current Portfolio')
     import plotly.io as pio
-    pio.renderers
+    # pio.renderers
     pio.renderers.default = 'svg'  # usingorca... -> static file
     return fig
     # fig.write_html('first_figure.html', auto_open=True)
@@ -94,8 +93,8 @@ def evaluate_clusters_in_sunburst(most_inner_cluster):
     )
     return fig
 
-    # example
 
 
-#f = evaluate_clusters_in_sunburst(MostInnerCluster='MSHN')
-#f
+if __name__ == '__main__':
+    f = evaluate_clusters_in_sunburst(most_inner_cluster='MSHN')
+    f.show()
