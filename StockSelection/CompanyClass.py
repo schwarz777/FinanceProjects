@@ -100,15 +100,14 @@ class Company:
 
 
 if __name__ == '__main__':
-    ticker = "PRX.AS"  # for debugging
-    c1 = Company(ticker)
-    c1.iam()
-    c1.valuation()
-    c2 = Company("EVD.DE")
+    ticker = ["IES.L","URW.AS","LI.PA","VALN.SW","FHZN.SW"] # for debugging
+    for i in ticker:
+        i = Company(i)
+    #c1 = Company("IES.L")
     CurrentUniverse = {id(instance): instance.ticker for instance in Company.instances}
     Company.how_many()
-    Company.compare(c1, start="2015-01-05", end="2020-05-25")
-    fig = c1.compare(start="2020-01-05", end="2020-05-25")
+    Company.compare(start="2015-01-05", end="2020-06-05")
+    fig = i.compare(start="2000-01-05", end="2020-06-05")
     fig.show()
 #    Company.remove_all_companies()
 #   tickers = {instance.ticker for instance in Company.instances}
