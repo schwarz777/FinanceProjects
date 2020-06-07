@@ -85,14 +85,13 @@ def evaluate_clusters_in_sunburst(most_inner_cluster):
     dfres = pd.DataFrame(results[0], columns=['parent', 'child', 'members'])
     dfres.to_dict()
 
-    fig = px.sunburst(
-        dfres,
-        names='child',
-        parents='parent',
-        values='members',
-    )
-    return fig
-
+    # fig = px.sunburst(
+    #     dfres,
+    #     names='child',
+    #     parents='parent',
+    #     values='members',
+    # )
+    return dfres
 
 
 if __name__ == '__main__':
