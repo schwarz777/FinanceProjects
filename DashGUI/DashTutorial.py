@@ -37,27 +37,41 @@ dropdownLabClusters = pd.read_sql(query, con=cnx)
 optionsmenu_own = [dict(label=i, value=i) for i in dropdownLabClusters["NameMotherCluster"]]
 
 app.layout = html.Div([
-    html.H2("Cluster Split"),
-    dcc.Markdown(children=markdown_text),
-    dcc.Dropdown(
-        id='dropdown-id',
-        options=optionsmenu_own,
-        value='GICS'
-    ),
-    html.Label('Please enter your comment!'),
-    dcc.Input(value='cheap shares are great!', type='text'),
-    dcc.Graph(id='sunburst-graph')
+    html.Div([
+        html.Div([
+            html.H3("Cluster Split"),
+            dcc.Markdown(children=markdown_text),
+            dcc.Dropdown(
+                id='dropdown-id',
+                options=optionsmenu_own,
+                value='GICS'
+            ),
+            html.Label('Please enter your comment!'),
+            dcc.Input(value='cheap shares are great!', type='text'),
+            dcc.Graph(id='sunburst-graph')
+
+        ], className="six columns"),
+        html.Div([
+            html.H3('Selected Companies View'),
+            dcc.Graph(id='g2',
+                      figure=epe.evaluate_portfolio_exposure(FilterCompanies="all", CategoryType="GICS",
+                                                             DrilldownLevel=1))
+        ], className="two columns"),
+    ], className="row")
 ])
+
 
 @app.callback(
     dash.dependencies.Output('sunburst-graph', 'figure'),
     [dash.dependencies.Input('dropdown-id', 'value')]
 )
 def update_output_div(input_value):
-    f=epe.evaluate_clusters_in_sunburst(most_inner_cluster=input_value)
-    return(f)
+    f = epe.evaluate_clusters_in_sunburst(most_inner_cluster=input_value)
+    return f
 
-
+app.css.append_css({
+    'external_url': 'https://codepen.io/chriddyp/pen/bWLwgP.css'
+})
 
 if __name__ == '__main__':
     app.run_server(debug=True)
