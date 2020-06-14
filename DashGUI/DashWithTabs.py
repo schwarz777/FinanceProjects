@@ -7,6 +7,7 @@ import plotly.express as px
 import sys
 sys.path.append(r'C:\Users\MichaelSchwarz\PycharmProjects\FinanceProjects')
 import MyFuncGeneral as my
+from datetime import date as dt
 
 # PREPARE TAB1 STOCKS RELATIVE
 sys.path.append(r'C:/Users/MichaelSchwarz/PycharmProjects/FinanceProjects/StockSelection')
@@ -57,10 +58,40 @@ app.layout = html.Div([
               [Input('tabs-example', 'value')])
 def render_content(tab):
     if tab == 'tab-1':
-        dat = get_tickerdata_for_display(start="2017-01-05", end="2020-05-25")
+        fig = get_tickerdata_for_display(start="2017-01-05", end=dt.today())
+        fig.update_layout(
+            title_text="Time series with range slider and selectors",
+            xaxis=dict(
+                rangeselector=dict(
+                    buttons=list([
+                        dict(count=1,
+                             label="1m",
+                             step="month",
+                             stepmode="backward"),
+                        dict(count=6,
+                             label="6m",
+                             step="month",
+                             stepmode="backward"),
+                        dict(count=1,
+                             label="YTD",
+                             step="year",
+                             stepmode="todate"),
+                        dict(count=1,
+                             label="1y",
+                             step="year",
+                             stepmode="backward"),
+                        dict(step="all")
+                    ])
+                ),
+                rangeslider=dict(
+                    visible=True
+                ),
+                type="date"
+            )
+        )
         return html.Div([
             html.H3('Performance over time'),
-            dcc.Graph(id='stocks_rel', figure=dat)
+            dcc.Graph(id='stocks_rel', figure=fig)
         ])
 
     elif tab == 'tab-2':
