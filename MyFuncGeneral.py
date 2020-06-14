@@ -30,8 +30,6 @@ def get_last_close(ticker, pricesource='yahoo'):
         return pxs[len(pxs) - 1]
     except:
         print("unable loading", ticker, "from ", from_d, "to ", to_d)
-        e = sys.exc_info()[0]
-        print(e)
 
     # example: get_last_close('URW.AS')
 
@@ -76,11 +74,14 @@ def get_tickers_history(start, end, tick_list, this_price, normalize_by=False):
     first_datapoint = list()
     # loop here to fetch all price data
     for idx, i in enumerate(tick_list):
-        fetch_new = pdr.DataReader(i, 'yahoo', start, end)
-        new = fetch_new[this_price]
-        new.name = i
-        first_datapoint.append(new.first_valid_index())
-        dat = dat.merge(new, how='outer', left_index=True, right_index=True)
+        try:
+            fetch_new = pdr.DataReader(i, 'yahoo', start, end)
+            new = fetch_new[this_price]
+            new.name = i
+            first_datapoint.append(new.first_valid_index())
+            dat = dat.merge(new, how='outer', left_index=True, right_index=True)
+        except:
+            print("No yahoo-data loaded for ticker", i)
     if normalize_by == 'shortest':
         # time series are normalized with the oldest price tick of the shortest  series
         dat = dat / dat.loc[max(first_datapoint)]
@@ -95,7 +96,7 @@ def get_tickers_history(start, end, tick_list, this_price, normalize_by=False):
         exit(0)
     return dat
     # example
-    # get_tickers_history(start="2015-01-05",end="2020-01-05",tick_list= ['ABBN.SW', 'PRX.AS', 'NSI.AS','KGX.DE','MSFT'],this_price='Close',normalize_by = 'first_price').plot()
+    # get_tickers_history(start="2017-01-05",end="2020-01-05",tick_list= ['ABBN.SW', 'THBEV.SI', 'NSI.AS','KGX.DE','MSFT'],this_price='Close',normalize_by = 'first_price').plot()
 
 
 # example
