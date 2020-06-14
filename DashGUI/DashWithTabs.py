@@ -5,28 +5,33 @@ from dash.dependencies import Input, Output
 import pandas as pd
 import plotly.express as px
 import sys
+import datetime as dt
+
 sys.path.append(r'C:\Users\MichaelSchwarz\PycharmProjects\FinanceProjects')
 import MyFuncGeneral as my
-from datetime import date as dt
 
 # PREPARE TAB1 STOCKS RELATIVE
 sys.path.append(r'C:/Users/MichaelSchwarz/PycharmProjects/FinanceProjects/StockSelection')
 import CompanyClass as c
 
+
 # get the tickers to display
-def get_tickerdata_for_display (start,end):
+def get_tickerdata_for_display(start, end):
     cnx = my.cnx_mysqldb('fuyu')
     query = "select * from issues_yh_now_selected"
     comps = pd.read_sql(query, con=cnx)
-    c.Company.remove_all_companies() # remove all companies before new ones are created!
+    c.Company.remove_all_companies()  # remove all companies before new ones are created!
     for i in comps['Ticker_yahoo']:
         i = c.Company(i)
     dat = i.compare(start, end)
-    return  dat
+    return dat
     # example
     # start="2017-01-05"; end="2020-05-25"
     # get_tickerdata_for_display (start,end)
 
+
+default_start = dt.date.today() - dt.timedelta(days=3 * 365)
+default_end = dt.date.today()
 # PREPARE TAB2 PORTFOLIO
 sys.path.append(r'C:/Users/MichaelSchwarz/PycharmProjects/FinanceProjects/PortfolioConstruction')
 import evaluate_portfolio_exposure as epe
@@ -46,6 +51,7 @@ external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
 app.layout = html.Div([
+
     dcc.Tabs(id='tabs-example', value='tab-1', children=[
         dcc.Tab(label='Stocks Relative', value='tab-1'),
         dcc.Tab(label='Portfolio', value='tab-2'),
@@ -58,9 +64,9 @@ app.layout = html.Div([
               [Input('tabs-example', 'value')])
 def render_content(tab):
     if tab == 'tab-1':
-        fig = get_tickerdata_for_display(start="2017-01-05", end=dt.today())
+        fig = get_tickerdata_for_display(start=default_start, end=default_end)
         fig.update_layout(
-            title_text="Time series with range slider and selectors",
+            # title_text="Time series with range slider and selectors",
             xaxis=dict(
                 rangeselector=dict(
                     buttons=list([
@@ -87,10 +93,18 @@ def render_content(tab):
                     visible=True
                 ),
                 type="date"
-            )
-        )
+            ))
         return html.Div([
-            html.H3('Performance over time'),
+            dcc.Markdown('''
+            #### Dash and Markdown
+            explain here in markdown what you can see!
+            '''),
+            # html.H3('Performance over time'),
+            html.Div([
+            dcc.DatePickerSingle(id='set-start-date-id', initial_visible_month=default_start, date=default_start),
+            # .format(date)),
+            html.P('Start and Normalize by Date')
+            ]),
             dcc.Graph(id='stocks_rel', figure=fig)
         ])
 
@@ -105,6 +119,45 @@ def render_content(tab):
             # dcc.Textarea(id='text', value="test"),
             dcc.Graph(id='graph-portfolio-view')
         ])
+
+
+@app.callback(
+    dash.dependencies.Output('stocks_rel', 'figure'),
+    [dash.dependencies.Input('set-start-date-id', 'date')]
+)
+def update_output_div(new_start):
+    fig = get_tickerdata_for_display(start=new_start, end=default_end)
+    fig.update_layout(
+        # title_text="Time series with range slider and selectors",
+        xaxis=dict(
+            rangeselector=dict(
+                buttons=list([
+                    dict(count=1,
+                         label="1m",
+                         step="month",
+                         stepmode="backward"),
+                    dict(count=6,
+                         label="6m",
+                         step="month",
+                         stepmode="backward"),
+                    dict(count=1,
+                         label="YTD",
+                         step="year",
+                         stepmode="todate"),
+                    dict(count=1,
+                         label="1y",
+                         step="year",
+                         stepmode="backward"),
+                    dict(step="all")
+                ])
+            ),
+            rangeslider=dict(
+                visible=True
+            ),
+            type="date"
+        )
+    )
+    return fig
 
 
 @app.callback(
