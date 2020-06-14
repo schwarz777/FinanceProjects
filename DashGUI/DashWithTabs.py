@@ -12,9 +12,19 @@ import MyFuncGeneral as my
 sys.path.append(r'C:/Users/MichaelSchwarz/PycharmProjects/FinanceProjects/StockSelection')
 import CompanyClass as c
 
-c1 = c.Company("PRX.AS")
-c2 = c.Company("EVD.DE")
-fig_prep = c1.compare(start="2020-01-05", end="2020-05-25")
+# get the tickers to display
+def get_tickerdata_for_display (start,end):
+    cnx = my.cnx_mysqldb('fuyu')
+    query = "select * from issues_yh_now_selected"
+    comps = pd.read_sql(query, con=cnx)
+    c.Company.remove_all_companies() # remove all companies before new ones are created!
+    for i in comps['Ticker_yahoo']:
+        i = c.Company(i)
+    dat = i.compare(start, end)
+    return  dat
+    # example
+    # start="2017-01-05"; end="2020-05-25"
+    # get_tickerdata_for_display (start,end)
 
 # PREPARE TAB2 PORTFOLIO
 sys.path.append(r'C:/Users/MichaelSchwarz/PycharmProjects/FinanceProjects/PortfolioConstruction')
@@ -47,9 +57,10 @@ app.layout = html.Div([
               [Input('tabs-example', 'value')])
 def render_content(tab):
     if tab == 'tab-1':
+        dat = get_tickerdata_for_display(start="2017-01-05", end="2020-05-25")
         return html.Div([
             html.H3('Performance over time'),
-            dcc.Graph(id='stocks_rel', figure=fig_prep)
+            dcc.Graph(id='stocks_rel', figure=dat)
         ])
 
     elif tab == 'tab-2':
