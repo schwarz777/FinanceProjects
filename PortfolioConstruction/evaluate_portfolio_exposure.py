@@ -8,92 +8,112 @@ Evaluate a portfolio's exposure after different categorizations
 
 
 """
+def evaluate_portfolio_exposure(put_currentprrices_in_db=False):
+    """gets the chosen current portfolio from mySQL, adds prices and pie-charts it ()
 
-
-def evaluate_portfolio_exposure(FilterCompanies="all", CategoryType="GICS", DrilldownLevel=1):
-    """gets the chosen companies with its categorisations from mySQL, adds prices and pie-charts it 
-    
     In:
-    FilterCompanies -- Filter only for Companies in a certain group like CurrentPortfolio,...
-    CategoryType    -- The main category for categorization
-    DrilldownLevel  -- Granularity at which the categorization is displayed 1:5 
-    
+    put_currentprices_in_db -- if True: write back loaded current prices into mysql
+
     """
     import sys
-    sys.path.append(r'C:\Users\MichaelSchwarz\PycharmProjects\FinanceProjects')
+    sys.path.append(r'C:/Users/MichaelSchwarz/PycharmProjects/FinanceProjects')
     import MyFuncGeneral as My
-
-    # checks
-    assert FilterCompanies in str(["all", "CurrentPortfolio"])
-    assert CategoryType in str(["GICS", "MSHN", "MSRC", "MSSC"])
-    assert DrilldownLevel in range(1, 6)
     cnx = My.cnx_mysqldb('fuyu')
-    if FilterCompanies != "CurrentPortfolio":
+    query = "select * from vcurrentportfolio p where UnitsOwned <>0"
 
-        query = "select * from vcurrentportfolio p " + \
-                "inner join vexposurevalues_per_parent_cluster_and_issuer e on p.IssueID=e.IssuerID " + \
-                "where e.ParentClusterlevel=1 and p.unitsOwned<>0"
-    else:
-        query = "select * from vcurrentportfolio p " + \
-                "inner join vexposurevalues_per_parent_cluster_and_issuer e on p.IssueID=e.IssuerID " + \
-                "where e.ParentClusterlevel=1 and p.unitsOwned<>0"
 
     import pandas as pd
-    comp_with_cat = pd.read_sql(query, con=cnx)
-    comp_with_cat['last_price'] = pd.Series(None, index=comp_with_cat.index)
+    comps = pd.read_sql(query, con=cnx)
+    comps['last_price'] = pd.Series(None, index=comps.index)
 
     # get last closing prices
-    for i in range(0, len(comp_with_cat)):
-        px = My.get_last_close(comp_with_cat.loc[i, 'Ticker_yahoo'])
-        comp_with_cat.loc[i, 'last_price'] = px
+    for i in range(0, (len(comps))):
+        px = My.get_last_close(comps.loc[i, 'Ticker_yahoo'])
+        comps.loc[i, 'last_price'] = px
 
-    comp_with_cat['InvAmount'] = comp_with_cat.last_price * comp_with_cat.UnitsOwned
+    if put_currentprrices_in_db:
+        import datetime as dt
+        prices_current_portfolio = comps[['IssueID','last_price']] # 'yahoo', ,dt.date.today())
+        prices_current_portfolio.columns = ['FK_IssueID', 'Price']
+        prices_current_portfolio['FK_Datasource'] = 'yahoo'
+        prices_current_portfolio['PriceDate'] = dt.date.today()
+        cnx = My.cnx_mysqldb('fuyu_jibengong')
+        cursor=cnx.cursor()
+        #delete current entries
+        table = 'fuyu_jibengong.portfolio_issue_prices_current'
+        query_del =  "delete from " + table
+        cursor.execute(query_del)
+        #add current tickers with prices
+        add_prices = ("INSERT INTO  " + table +
+                      "(FK_IssueID, Price, FK_Datasource, PriceDate) "
+                      "VALUES (%s, %s, %s, %s)")
+        p_list = prices_current_portfolio.values.tolist()
+        cursor.executemany(add_prices,p_list)
+        cnx.commit()
+        print(cursor.rowcount, "was inserted.")
+
+    cursor.close()
+    cnx.close()
+
+
+    comps['InvAmount'] = comps.last_price * comps.UnitsOwned
 
     # plot
     import plotly.express as px
-    fig = px.pie(comp_with_cat, values='InvAmount', names='Ticker_yahoo', title='My current Portfolio')
+    fig = px.pie(comps, values='InvAmount', names='Ticker_yahoo', title='My current Portfolio')
     import plotly.io as pio
     # pio.renderers
     pio.renderers.default = 'svg'  # usingorca... -> static file
     return fig
-    # fig.write_html('first_figure.html', auto_open=True)
-
-
-#  return(comp_with_cat)
 
 
 # example
-# FilterCompanies="all"; CategoryType="GICS";DrilldownLevel=1
-# d=evaluate_portfolio_exposure(FilterCompanies="all", CategoryType="MSSC",DrilldownLevel=4)
+# fig=evaluate_portfolio_exposure(put_currentprices_in_db = True)
+# fig.write_html('first_figure.html', auto_open=True)
 
 # sunburst Chart
-def evaluate_clusters_in_sunburst(most_inner_cluster):
+def cluster_data_for_sunburst_eval(most_inner_cluster):
     import pandas as pd
     import plotly.express as px
     import sys
     sys.path.append('C:/Users/MichaelSchwarz/.spyder-py3/myPyCode')
     import mysql.connector
 
+    fig_portfolio = evaluate_portfolio_exposure(put_currentprrices_in_db=True) #gets portfolio data AND writes current prices in DB!!!
+
     connection = mysql.connector.connect(host='localhost',
                                          database='fuyu',
                                          user='root',
                                          password='mysql4michi')
     cursor = connection.cursor()
+    #Todo  check input parameter most_inner_cluster
+    # get allowed
+    #assert FilterCompanies in str(["all", "CurrentPortfolio"])
 
-    cursor.callproc('usp_vpy_FilterMembercountForCluster', [most_inner_cluster])
+    # get current portfolio
+
+    #find prices and write into sql
+
+    #get portfolio clustered
+    
+    #plot
+    #cursor.callproc('usp_vpy_FilterMembercountForCluster', [most_inner_cluster])
+    cursor.callproc('usp_vpy_ScreenPortfolioByCluster', [most_inner_cluster])
     results = [r.fetchall() for r in cursor.stored_results()]
-    dfres = pd.DataFrame(results[0], columns=['parent', 'child', 'members'])
+    dfres = pd.DataFrame(results[0], columns=['parent', 'child', 'InvAmount'])
     dfres.to_dict()
 
-    # fig = px.sunburst(
-    #     dfres,
-    #     names='child',
-    #     parents='parent',
-    #     values='members',
-    # )
     return dfres
 
 
 if __name__ == '__main__':
-    f = evaluate_clusters_in_sunburst(most_inner_cluster='MSHN')
-    f.show()
+    dfres = cluster_data_for_sunburst_eval(most_inner_cluster='MSHN')
+    import plotly.express as px
+    import psutil
+    fig = px.sunburst(
+        dfres,
+        names='child',
+        parents='parent',
+        values='InvAmount',
+    )
+    fig.write_html('first_figure.html', auto_open=True)
