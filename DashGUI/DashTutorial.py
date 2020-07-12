@@ -66,7 +66,7 @@ app.layout = html.Div([
     [dash.dependencies.Input('dropdown-id', 'value')]
 )
 def update_output_div(input_value):
-    f = epe.evaluate_clusters_in_sunburst(most_inner_cluster=input_value)
+    f = epe.cluster_data_for_sunburst_eval(most_inner_cluster=input_value)
     return f
 
 app.css.append_css({

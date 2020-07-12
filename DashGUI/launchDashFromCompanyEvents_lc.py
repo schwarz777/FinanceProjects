@@ -21,7 +21,7 @@ app.layout = html.Div([
         html.Div([
             html.H3('BM-View'),
             dcc.Graph(id='g1',
-                      figure=epe.evaluate_clusters_in_sunburst(most_inner_cluster='GICS')
+                      figure=epe.cluster_data_for_sunburst_eval(most_inner_cluster='GICS')
                       # epe.evaluate_portfolio_exposure(FilterCompanies="all", CategoryType="MSSC",DrilldownLevel=4)
                       )
         ], className="six columns"),
@@ -39,7 +39,7 @@ app.css.append_css({
     'external_url': 'https://codepen.io/chriddyp/pen/bWLwgP.css'
 })
 
-figure = epe.evaluate_clusters_in_sunburst(
+figure = epe.cluster_data_for_sunburst_eval(
     most_inner_cluster='')  # epe.evaluate_portfolio_exposure(FilterCompanies="all", CategoryType="MSSC",DrilldownLevel=4)
 
 if __name__ == '__main__':

@@ -42,7 +42,7 @@ app.layout = html.Div([
                    'display': 'inline-block'}),
 
         dcc.Graph(id='funnel-graph',
-                  figure=epe.evaluate_clusters_in_sunburst(most_inner_cluster='NameMotherCluster')
+                  figure=epe.cluster_data_for_sunburst_eval(most_inner_cluster='NameMotherCluster')
                   )
     ], className="six columns"
     ),
@@ -60,14 +60,14 @@ app.layout = html.Div([
     dash.dependencies.Output('funnel-graph', 'figure'),
     [dash.dependencies.Input('NameMotherCluster', 'value')])
 def update_graph(cat_type):
-    epe.evaluate_clusters_in_sunburst(most_inner_cluster=cat_type)
+    epe.cluster_data_for_sunburst_eval(most_inner_cluster=cat_type)
 
 
 app.css.append_css({
     'external_url': 'https://codepen.io/chriddyp/pen/bWLwgP.css'
 })
 
-# figure = epe.evaluate_clusters_in_sunburst(
+# figure = epe.cluster_data_for_sunburst_eval(
 #    most_inner_cluster='GICS')  # epe.evaluate_portfolio_exposure(FilterCompanies="all", CategoryType="MSSC",DrilldownLevel=4)
 
 if __name__ == '__main__':
