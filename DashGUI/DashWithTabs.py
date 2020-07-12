@@ -165,11 +165,11 @@ def update_output_div(new_start):
     [dash.dependencies.Input('dropdown-id', 'value')]
 )
 def update_output_div(chosen_cluster):
-    clust = epe.evaluate_clusters_in_sunburst(chosen_cluster)
+    clust = epe.cluster_data_for_sunburst_eval(chosen_cluster)
     f = px.sunburst(clust,
                     names='child',
                     parents='parent',
-                    values='members',
+                    values='InvAmount',
                     )
     return f
 
