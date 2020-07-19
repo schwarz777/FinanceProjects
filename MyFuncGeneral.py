@@ -42,11 +42,16 @@ def cnx_mysqldb(database='fuyu'):
                                   host='127.0.0.1',
                                   database=database)
     return cnx
-
-
 # df = pd.read_sql(query, con=cnx)
 # import pandas as pd
 # f
+
+
+def date2mysqldatestring(date):
+    import datetime as dt
+    assert(type(date) == dt.datetime)
+    return str(date)[0:10]
+
 
 ##example to call mysql procedure
 # connection = mysql.connector.connect(host='localhost',
