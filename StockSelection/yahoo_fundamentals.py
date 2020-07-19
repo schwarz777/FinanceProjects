@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 import sys
 import datetime as dt
+
+
 # description of code: https://www.mattbutton.com/2019/01/24/how-to-scrape-yahoo-finance-and-extract-fundamental-stock-market-data-using-python-lxml-and-pandas/
 
 def get_page(url):
@@ -111,36 +113,58 @@ def scrape(symbol):
     return df_joined
 
 
-def update_db(symbol)
+def update_db(symbol, addLackingFK=False):
     """ update the mysql data with possible newer data """
     df = scrape(symbol)
     for t in df['Date']:
         updi = df.loc[df['Date'] == t]
-        updi = updi.iloc[:,3:]
-        if t != 'ttm':  #ignore ttm column!
+        updi = updi.iloc[:, 3:]
+        if t != 'ttm':  # ignore ttm column!
             # check if statement available and get id
-            ped=dt.datetime.strptime(str(t),'%m/%d/%Y') #period end date
+            ped = dt.datetime.strptime(str(t), '%m/%d/%Y')  # period end date
             sys.path.append(r'C:\Users\MichaelSchwarz\PycharmProjects\FinanceProjects')
             import MyFuncGeneral as My
             cnx = My.cnx_mysqldb('fuyu_jibengong')
-            cursor=cnx.cursor()
-            cursor.callproc('fuyu_jibengong.usp_py_get_statement_id', ['yahoo',My.date2mysqldatestring(ped),symbol])
+            cursor = cnx.cursor()
+            cursor.callproc('fuyu_jibengong.usp_py_get_statement_id', ['yahoo', My.date2mysqldatestring(ped), symbol])
             cnx.commit()
             statement_id = [r.fetchall() for r in cursor.stored_results()][0][0][0]
 
         for (columnName, columnData) in updi.iteritems():
             if np.isnan(columnData.values) == False:
-                query = "replace into std_fundamentals(fk_statement,fk_std_item,std_value) values ("+ str(statement_id) + ''", '" + columnName +"' ,"+ str(columnData.values[0]) +")"
-                cursor.execute(query)
-                cnx.commit()
+                # check what is the std_item id of the yahoo fundamental item
+                q_check_std_id = "select std_item_id from fuyu_jibengong.std_items where fk_datasource = 'yahoo' and std_item_name = '" + columnName + "'"
+                std_id = pd.read_sql(q_check_std_id, cnx)
+                if std_id.empty:
+                    if addLackingFK:
+                        print("try to add lacking FK")
+                        try:
+                            q_addFK = "insert into fuyu_jibengong.std_items(std_item_name,fk_datasource) values ('" + columnName + "' , 'yahoo' )"
+                            cursor.execute(q_addFK)
+                            cnx.commit()
+                            # get created id
+                            std_id = pd.read_sql('SELECT LAST_INSERT_ID()', cnx)
+                        except:
+                            print("something went wrong adding new std_item: " + columnName)
+                    else:
+                        print("no id found will lead to error: Activate addLackingFK to insert new item names")
+                # add the new data item
+                query = ("replace into std_fundamentals(fk_statement,fk_std_item,std_value) values (" +
+                         str(statement_id) + ", '" + str(std_id.iloc[0,0]) + "' ," + str(columnData.values[0]) + ")")
+                try:
+                    cursor.execute(query)
+                    cnx.commit()
+                    print("successfully added/updated stmt_id " + str(statement_id) + ''", '" + columnName + "' , " +
+                          str(columnData.values[0]))
+                except:
+                    print("Not added, probably FK fails for:" + str(statement_id) + ''", '" + columnName + "' , " + str(
+                        columnData.values[0]))
 
-
-
-
-
+        cnx.close()
 
 
 if __name__ == '__main__':
-symbol= 'ALB'
-df = scrape(symbol)
-df.transpose()
+    symbol = 'ALB'
+    # df = scrape(symbol)
+    # df.transpose()
+    update_db(symbol,True)
