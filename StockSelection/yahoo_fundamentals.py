@@ -137,13 +137,14 @@ def update_db(symbol, addLackingFK=False):
                 std_id = pd.read_sql(q_check_std_id, cnx)
                 if std_id.empty:
                     if addLackingFK:
-                        print("try to add lacking FK")
+                        print("try to add lacking foreign key")
                         try:
                             q_addFK = "insert into fuyu_jibengong.std_items(std_item_name,fk_datasource) values ('" + columnName + "' , 'yahoo' )"
                             cursor.execute(q_addFK)
                             cnx.commit()
                             # get created id
                             std_id = pd.read_sql('SELECT LAST_INSERT_ID()', cnx)
+                            print("successfully added FK for : " + columnName)
                         except:
                             print("something went wrong adding new std_item: " + columnName)
                     else:
@@ -159,12 +160,11 @@ def update_db(symbol, addLackingFK=False):
                 except:
                     print("Not added, probably FK fails for:" + str(statement_id) + ''", '" + columnName + "' , " + str(
                         columnData.values[0]))
-
-        cnx.close()
+    cnx.close()
 
 
 if __name__ == '__main__':
     symbol = 'ALB'
     # df = scrape(symbol)
     # df.transpose()
-    update_db(symbol,True)
+    update_db(symbol,addLackingFK = False)
