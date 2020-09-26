@@ -139,3 +139,9 @@ def get_source(func):
 #         cnx.close()
 # query_mysqldb("select * from issue")
 ####end....######
+def check_numeric(x):
+    if not any([isinstance(x, int),
+                isinstance(x, float),
+           #     isinstance(x, long),
+                isinstance(x, complex)]):
+        raise ValueError('{0} is not numeric'.format(x))
