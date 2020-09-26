@@ -14,24 +14,24 @@ import MyFuncGeneral as my
 sys.path.append(r'C:/Users/MichaelSchwarz/PycharmProjects/FinanceProjects/StockSelection')
 import CompanyClass as c
 
-
 # get the tickers to display
-def get_tickerdata_for_display(start, end):
+def create_companies():
     cnx = my.cnx_mysqldb('fuyu')
     query = "select * from issues_yh_now_selected"
     comps = pd.read_sql(query, con=cnx)
     c.Company.remove_all_companies()  # remove all companies before new ones are created!
     for i in comps['Ticker_yahoo']:
         i = c.Company(i)
-    dat = i.compare(start, end)
-    return dat
-    # example
-    # start="2017-01-05"; end="2020-05-25"
-    # get_tickerdata_for_display (start,end)
+    return  i # example dat
+    # arb_company=create_companies()
 
 
-default_start = dt.date.today() - dt.timedelta(days=3 * 365)
+default_start = dt.date.today() - dt.timedelta(days= 20 * 365)
 default_end = dt.date.today()
+datrange = pd.date_range(default_start,default_end)
+numdate = [x for x in range(len(datrange))]
+arb_comp = create_companies()
+
 # PREPARE TAB2 PORTFOLIO
 sys.path.append(r'C:/Users/MichaelSchwarz/PycharmProjects/FinanceProjects/PortfolioConstruction')
 import evaluate_portfolio_exposure as epe
@@ -64,48 +64,27 @@ app.layout = html.Div([
               [Input('tabs-example', 'value')])
 def render_content(tab):
     if tab == 'tab-1':
-        fig = get_tickerdata_for_display(start=default_start, end=default_end)
-        fig.update_layout(
-            # title_text="Time series with range slider and selectors",
-            xaxis=dict(
-                rangeselector=dict(
-                    buttons=list([
-                        dict(count=1,
-                             label="1m",
-                             step="month",
-                             stepmode="backward"),
-                        dict(count=6,
-                             label="6m",
-                             step="month",
-                             stepmode="backward"),
-                        dict(count=1,
-                             label="YTD",
-                             step="year",
-                             stepmode="todate"),
-                        dict(count=1,
-                             label="1y",
-                             step="year",
-                             stepmode="backward"),
-                        dict(step="all")
-                    ])
-                ),
-                rangeslider=dict(
-                    visible=True
-                ),
-                type="date"
-            ))
+        fig = arb_comp.compare(start=default_start, end=default_end)
         return html.Div([
             dcc.Markdown('''
-            #### Dash and Markdown
-            explain here in markdown what you can see!
+            #### Stock Performance normalized by start date
+            if a stock with shorter history is chosen, normalized as of shortest
             '''),
-            # html.H3('Performance over time'),
-            html.Div([
-            dcc.DatePickerSingle(id='set-start-date-id', initial_visible_month=default_start, date=default_start),
-            # .format(date)),
-            html.P('Start and Normalize by Date')
-            ]),
-            dcc.Graph(id='stocks_rel', figure=fig)
+            dcc.Graph(id='stocks_rel', figure=fig, ),
+            dcc.RangeSlider(
+                    id='my-range-slider',
+                    min= numdate[0],
+                    max=  numdate[-1]
+                  ,marks =   {0:datrange[0].date() ,
+                             int(len(datrange)/6): datrange[int(len(datrange)/6)].date(),
+                             int(len(datrange) *2/ 6): datrange[int(len(datrange)*2 / 6)].date(),
+                             int(len(datrange) * 3 / 6): datrange[int(len(datrange) * 3 / 6)].date(),
+                             int(len(datrange) *4/ 6): datrange[int(len(datrange)*4 / 6)].date(),
+                             int(len(datrange) * 5/ 6): datrange[int(len(datrange) * 5 / 6)].date(),
+                             len(datrange): datrange[len(datrange)-1]}
+                    ,value=[int(len(datrange) * 5 / 6), numdate[-1]]
+                )
+
         ])
 
     elif tab == 'tab-2':
@@ -121,44 +100,6 @@ def render_content(tab):
         ])
 
 
-@app.callback(
-    dash.dependencies.Output('stocks_rel', 'figure'),
-    [dash.dependencies.Input('set-start-date-id', 'date')]
-)
-def update_output_div(new_start):
-    fig = get_tickerdata_for_display(start=new_start, end=default_end)
-    fig.update_layout(
-        # title_text="Time series with range slider and selectors",
-        xaxis=dict(
-            rangeselector=dict(
-                buttons=list([
-                    dict(count=1,
-                         label="1m",
-                         step="month",
-                         stepmode="backward"),
-                    dict(count=6,
-                         label="6m",
-                         step="month",
-                         stepmode="backward"),
-                    dict(count=1,
-                         label="YTD",
-                         step="year",
-                         stepmode="todate"),
-                    dict(count=1,
-                         label="1y",
-                         step="year",
-                         stepmode="backward"),
-                    dict(step="all")
-                ])
-            ),
-            rangeslider=dict(
-                visible=True
-            ),
-            type="date"
-        )
-    )
-    return fig
-
 
 @app.callback(
     dash.dependencies.Output('graph-portfolio-view', 'figure'),
@@ -173,6 +114,14 @@ def update_output_div(chosen_cluster):
                     )
     return f
 
+@app.callback(
+    dash.dependencies.Output('stocks_rel', 'figure'),
+    [dash.dependencies.Input('my-range-slider', 'value')])
+def update_output(value):
+   new_start = datrange[value[0]]
+   new_end = datrange[value[1]]
+   fig = arb_comp.compare(start=new_start, end=new_end)
+   return fig #'You have selected '+ str(new_start) + 'to' + str(new_end)
 
 # app.css.append_css({
 #     'external_url': 'https://codepen.io/chriddyp/pen/bWLwgP.css'
