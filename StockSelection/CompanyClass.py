@@ -4,7 +4,46 @@ Created on Mon Oct 14 19:37:30 2019
 
 @author: MichaelSchwarz
 """
+class KF:
+    """Keyfigure: defined by name with attributes value (list of dates and respective values) and kf_type"""
+    def __init__(self, name, value, kf_type):
+         self.name = name
+         #assert value is pd.df table with years and (numeric) values
+             # import sys
+             # sys.path.append(r'C:\Users\MichaelSchwarz\PycharmProjects\FinanceProjects')
+             # import MyFuncGeneral as My
+             # My.check_numeric(value)
+         self.value = value
+         assert kf_type in ['Value_estimate','Debt_figure','CF_est_Ent','CF_est_Equ']
+         self.type = kf_type
 
+    def get_valuation(self, mv, displayMethod='YtFV', discountRate=None, include_hist_val=False):
+            """
+            here simply use FV and MV and calculate valuation as specified!
+            displayMethod must be in: 'YtFV' (Yield to FairValue), 'Premium/discount', 'Multiple'
+
+            require(displayMethod in ['YtFV' ,'Premium/discount','Multiple'])
+            require( displayMethod in ['YtFV' ,'Premium/discount'] & discountRate != None) #only for Multiple no discountRate is required
+
+            ----------
+            Returns
+            -------
+
+            """
+            if displayMethod == 'YtFV':
+                #
+                def get_keyfigure(val):
+                    for key, value in kf['KFs_type'].items():
+                        if val == value:
+                            return key
+
+                    return "key doesn't exist"
+
+                get_keyfigure('Value_estimate')
+
+                get_keyfigure('CF_est_Ent')
+            else:
+                print("display Method '"+displayMethod +"' not yet implemented")
 
 class Company:
     """Represents a company, with a ticker."""
@@ -30,6 +69,7 @@ class Company:
                 "Ticker_yh='" + CompanyTicker + "'"
         import pandas as pd
         self.Fundamentals = pd.read_sql(query, con=cnx)
+        # TODO: check if update needed!
 
     def iam(self):
         """introduction of the company"""
@@ -39,6 +79,9 @@ class Company:
         """calculate the MV  (market value) of the company
             as_of : None for present, date for historic
         """
+        sys.path.append(r'C:\Users\MichaelSchwarz\PycharmProjects\FinanceProjects')
+        import MyFuncGeneral as My
+
         if (as_of is None) & (source == 'std_yahoo'):
             last_f = self.Fundamentals[
                 (self.Fundamentals['period_end_date'] == max(self.Fundamentals['period_end_date'])) & (
@@ -57,63 +100,90 @@ class Company:
 
         return mv
 
-    def get_KFs(self, keyinputset='Default'):
+    def get_kfs(self, keyinputset='Default'):
         """get dif ferent estimates for  Keyfigures depending on v_key_inputs (ie Fundamentals)"""
         f = self.Fundamentals
         f = f[f.Set_name == keyinputset]
-        f = f.pivot(index='period_end_date', columns='KeyInput_name')[
-            'KeyInput_value']  # transpose inputs for CFs calculation per date
-        import pandas as pd
-        kf_ = pd.DataFrame()
-        kf_type = pd.DataFrame()
+        f = f.pivot(index='period_end_date', columns='KeyInput_name')['KeyInput_value']  # transpose inputs for CFs calculation per date
+
+        #help functions to get valid keyfig-columns only (any missing input -> None-Keyfig)
+        def get_col(colname,f=f,sign=1):
+            if colname in f.columns:
+                #todo check structure
+                col_out =sign*f[colname]
+            else:
+                col_out = None
+            return col_out
+
+        def sum_or_none(list):
+            if not any(x is None for x in list):
+                if len(list) == 1:
+                    s = list[0]
+                else:
+                    s = sum(list)
+            else:
+                s=None
+            return s
+
+        # start calculating the keyfigures and put them in KFs
+        KFs = []
         if keyinputset == 'Default':
-
             # Value estimates
-            kf_['AssetBase'] = f['AssetBase']
-            kf_type['AssetBase'] = 'Value_estimate'
+            kf_type = 'Value_estimate'
+            kf_is_sum = [get_col(colname='AssetBase')]
+            KFs.append(KF('AssetBase',sum_or_none(kf_is_sum),kf_type))
+            kf_is_sum.append(get_col('Cash',sign=-1))
+            KFs.append(KF('AssetBaseNetCash',sum_or_none(kf_is_sum),kf_type))
 
-            kf_['AssetBaseNetCash'] = f['AssetBase'] - f['Cash']
-            kf_type['AssetBaseNetCash'] = 'Value_estimate'
-
-            # Debt figures
-            kf_['Debt pct'] = f['Liabilities_EV'] / f['AssetBase']
-            kf_type['Debt pct'] = 'Value_estimate'
+            # # Debt figures
+            # kf_['Debt pct'] = f['Liabilities_EV'] / f['AssetBase']
+            # kf_type['Debt pct'] = 'Debt_figure'
 
             # CF estimates Entity
-            kf_['Operating Earnings'] = f['rR'] + f['rCfix']
-            kf_type['Operating Earnings'] = 'CF_est_Ent'
+            kf_type = 'CF_est_Ent'
+            kf_is_sum = [get_col('rR') , get_col('rCfix') ]
+            op_earn_ent = sum_or_none(kf_is_sum)
+            KFs.append(KF('Operating Earnings',op_earn_ent,kf_type))
 
-            kf_['Operating Earnings incl non-core'] = kf_['Operating Earnings'] + f['ncIt']
-            kf_type['Operating Earnings and non-core'] = 'CF_est_Ent'
 
-            kf_['Operating Earnings after capex'] = kf_['Operating Earnings'] + f['capex']
-            kf_type['Operating Earnings after capex'] = 'CF_est_Ent'
+            op_earn_ent_nc = sum_or_none([op_earn_ent,get_col('ncIt')])
+            KFs.append(KF('Operating Earnings and non-core', sum_or_none(kf_is_sum), kf_type))
+
+            kf_is_sum = [get_col('rR'), get_col('rCfix'),get_col('capex')]
+            KFs.append(KF('Operating Earnings after capex', sum_or_none(kf_is_sum), kf_type))
 
             # CF estimates Equity
-            kf_['Operating Earnings Equ'] = (kf_['Operating Earnings'] + f['rCinterest'] + f['rRinterest']) * (
-                    1 - f['tax rate'])
-            kf_type['Operating Earnings Equ'] = 'CF_est_Equ'
+            kf_type = 'CF_est_Equ'
+            kf_is_sum = [op_earn_ent,get_col('rCinterest'),get_col('rRinterest')]
+            earn_ex_tax = sum_or_none(kf_is_sum)
+            kf_is_sum = [op_earn_ent_nc, get_col('rCinterest'), get_col('rRinterest')]
+            earn_ex_tax_nc = sum_or_none(kf_is_sum)
+            if get_col('tax rate') is None:
+                print("no tax rate -> 0taxes assumed")
+                earn=earn_ex_tax
+                earn_nc = earn_ex_tax_nc
 
-            kf_['Operating Earnings after capex Equ'] = (kf_['Operating Earnings'] + f['rCinterest'] + f[
-                'rRinterest']) * (1 - f['tax rate']) + f['capex']
-            kf_type['Operating Earnings after capex Equ'] = 'CF_est_Equ'
+            else:
+                earn = earn_ex_tax*(1-get_col('tax rate'))
+                earn_nc = earn_ex_tax_nc*(1-get_col('tax rate'))
 
-            kf_['Operating Earnings incl non-core Equ'] = (kf_['Operating Earnings incl non-core'] + f['rCinterest'] +
-                                                           f['rRinterest']) * (1 - f['tax rate'])
-            kf_type['Operating Earnings incl non-core Equ'] = 'CF_est_Equ'
 
-            kf_['NetIncome'] = f['NetIncome_reported']
-            kf_type['NetIncome'] = 'CF_est_Equ'
+            KFs.append(KF('Operating Earnings Equ', earn, kf_type))
+            KFs.append(KF('Operating Earnings incl non-core', earn_nc, kf_type))
+            earn_cpx = sum_or_none([earn,get_col('capex')])
+            KFs.append(KF('Operating Earnings after capex Equ', earn_cpx, kf_type))
 
-            kf_['operating CF'] = f['operatingCF_reported']
-            kf_type['operating CF'] = 'CF_est_Equ'
+            KFs.append(KF('NetIncome', get_col('NetIncome_reported'), kf_type))
 
-            kf_['operating CF after capex'] = kf_['operating CF'] + f['capex']
-            kf_type['operating CF after capex'] = 'CF_est_Equ'
+            KFs.append(KF('operating CF', get_col('operatingCF_reported'), kf_type))
+
+            kf_is_sum = [get_col('operating CF'),get_col('capex')]
+            KFs.append(KF('operating CF after capex', sum_or_none(kf_is_sum), kf_type))
+
         else:
             print("not defined how to handle keyinputset '" + keyinputset + "' yet")
 
-        return {'KFs': kf_, 'KFs_type': kf_type}
+        return KFs
 
     # def get_FV(self, historic_since=None,keyinputset='Default'): #used parameters to filter from v_key_inputs: Set, statement (+ make a check that not 2statements for same item!!!), then  group by period end (annualize if necessary!)
     #     """calculate FV(s) of the company"""
@@ -135,23 +205,7 @@ class Company:
     #
     #         #return keyfigset (consisting of dicts (date, keyfig, scope)
 
-    def get_valuation(self, displayMethod='YtFV', discountRate=None):
-        """
-        displayMethod must be in: 'YtFV' (Yield to FairValue), 'Premium/discount', 'Multiple'
 
-        require(displayMethod in ['YtFV' ,'Premium/discount','Multiple'])
-        require( displayMethod in ['YtFV' ,'Premium/discount'] & discountRate != None) #only for Multiple no discountRate is required
-
-
-        Parameters
-        ----------
-        here simply get FV and MV and calculate valuation properly!
-
-        Returns
-        -------
-
-        """
-        # divide FV by
 
     def die(self):
         """removal of a company"""
@@ -206,8 +260,8 @@ if __name__ == '__main__':
     N = Company(ticker)
     mv = N.get_mv()
     A = Company('ALB')
-    mvA = A.get_mv()
-    kf = A.get_KFs()
+    mvA = N.get_mv()
+    kf = A.get_kfs()
     kf['KFs'].transpose()
 #   tickers = {instance.ticker for instance in Company.instances}
 #  print(CurrentUniverse)
