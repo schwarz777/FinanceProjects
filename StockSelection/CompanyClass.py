@@ -3,47 +3,18 @@
 Created on Mon Oct 14 19:37:30 2019
 
 @author: MichaelSchwarz
+
+how it is embedded in framework and overview of processes: https://app.diagrams.net/#G1JGE9l-BotVV2vmpVJIEaInXLLW4A0_Rs
 """
-class KF:
-    """Keyfigure: defined by name with attributes value (list of dates and respective values) and kf_type"""
-    def __init__(self, name, value, kf_type):
-         self.name = name
-         #assert value is pd.df table with years and (numeric) values
-             # import sys
-             # sys.path.append(r'C:\Users\MichaelSchwarz\PycharmProjects\FinanceProjects')
-             # import MyFuncGeneral as My
-             # My.check_numeric(value)
-         self.value = value
-         assert kf_type in ['Value_estimate','Debt_figure','CF_est_Ent','CF_est_Equ']
-         self.type = kf_type
+import sys
+import pandas as pd
+import plotly.graph_objects as go
+import numpy as np
+import xarray as xr
+import datetime as dt
+sys.path.append(r'C:\Users\MichaelSchwarz\PycharmProjects\FinanceProjects')
+import MyFuncGeneral as My
 
-    def get_valuation(self, mv, displayMethod='YtFV', discountRate=None, include_hist_val=False):
-            """
-            here simply use FV and MV and calculate valuation as specified!
-            displayMethod must be in: 'YtFV' (Yield to FairValue), 'Premium/discount', 'Multiple'
-
-            require(displayMethod in ['YtFV' ,'Premium/discount','Multiple'])
-            require( displayMethod in ['YtFV' ,'Premium/discount'] & discountRate != None) #only for Multiple no discountRate is required
-
-            ----------
-            Returns
-            -------
-
-            """
-            if displayMethod == 'YtFV':
-                #
-                def get_keyfigure(val):
-                    for key, value in kf['KFs_type'].items():
-                        if val == value:
-                            return key
-
-                    return "key doesn't exist"
-
-                get_keyfigure('Value_estimate')
-
-                get_keyfigure('CF_est_Ent')
-            else:
-                print("display Method '"+displayMethod +"' not yet implemented")
 
 class Company:
     """Represents a company, with a ticker."""
@@ -51,23 +22,22 @@ class Company:
     instances = []
     population = 0
 
-    def __init__(self, CompanyTicker):
+    def __init__(self, CompanyTicker):  # future parameter datasource as here the selection of the datasource happens
         """Initializes the company."""
         self.ticker = CompanyTicker
         Company.instances.append(self)
         print("(Initializing {})".format(self.ticker))
         Company.population += 1
 
-        "get all key inputs for this Ticker from mySQL"
-        import sys
-        sys.path.append(r'C:\Users\MichaelSchwarz\PycharmProjects\FinanceProjects')
-        import MyFuncGeneral as My
+        # "get all key inputs for this Ticker from mySQL"
+
         cnx = My.cnx_mysqldb('fuyu_jibengong')
         # get yahoo std data as basic to start with
-        query = "select Set_name, KeyInput_name,period_end_date,KeyInput_value from v_key_inputs " + \
+        query = "select Set_name, KeyInput_name,period_end_date,KeyInput_value from v_key_inputs_with_scenarios " + \
                 "where source = 'std_yahoo' and reporting_duration_in_months=12 and " + \
-                "Ticker_yh='" + CompanyTicker + "'"
-        import pandas as pd
+                "Ticker_yh='" + CompanyTicker + "' and " + \
+                "scenario_name = 'None' "
+        # todo: dont filter for scenario_name but build scenario alternative properly!!!
         self.Fundamentals = pd.read_sql(query, con=cnx)
         # TODO: check if update needed!
 
@@ -75,117 +45,45 @@ class Company:
         """introduction of the company"""
         print("I am company", self.ticker)
 
-    def get_mv(self, as_of=None, source='std_yahoo', keyinputset='Default', liability_keyinput='Liabilities_EV'):
+    def get_mv(self, hist_since=None,  keyinputset='Default',
+               price_source='std_yahoo',liability_keyinput='Liabilities_EV'):
         """calculate the MV  (market value) of the company
-            as_of : None for present, date for historic
+            hist_since : None for present, date for historic date value like hist_since = '2018-09-01'
         """
-        sys.path.append(r'C:\Users\MichaelSchwarz\PycharmProjects\FinanceProjects')
-        import MyFuncGeneral as My
+        if 'std_yahoo' != price_source:
+            raise ValueError('Only source std_yahoo defined. You gave: ', price_source)
 
-        if (as_of is None) & (source == 'std_yahoo'):
-            last_f = self.Fundamentals[
-                (self.Fundamentals['period_end_date'] == max(self.Fundamentals['period_end_date'])) & (
-                        self.Fundamentals.Set_name == keyinputset)]
-            last_f.KeyInput_value = last_f.KeyInput_value  #  yahoo standardization
-            equ_v = last_f.KeyInput_value[last_f.KeyInput_name == 'SharesOutCurrent'].values * My.get_last_close(
-                self.ticker)
-            ent_v = equ_v + last_f.KeyInput_value[last_f.KeyInput_name == liability_keyinput].values + \
-                    last_f.KeyInput_value[
-                        last_f.KeyInput_name == 'MinorityInterest_EV'].values
+        kid = self.pivot_keyinputs_of_set(keyinputset)  # get pivotted key input data
+        if hist_since is None:
+            last_f = kid.loc[kid.index == max(kid.index), :]
+            equ_v = My.get_last_close(self.ticker) * last_f['SharesOutCurrent'].to_numpy()
+            ent_v = equ_v + last_f[liability_keyinput].to_numpy() + last_f['MinorityInterest_EV'].to_numpy()
             mv = {'equ_v': equ_v,
                   'ent_v': ent_v}
         else:
-            mv = {}
-            print("MV for historic and/or non-yahoo-data not defined yet")
-
+            p_close = My.get_tickers_history(tick_list=[self.ticker], start=hist_since)
+            close_w_fundamentals = My.fill_up_series_with_closest(long_series=p_close.iloc[:, 0], short_series=kid)
+            equ_v = close_w_fundamentals.iloc[:, 0] * close_w_fundamentals["SharesOutCurrent"]
+            ent_v = equ_v + close_w_fundamentals[liability_keyinput] + close_w_fundamentals[
+                'MinorityInterest_EV'].fillna(0)
+            mv = {'equ_v': equ_v,
+                  'ent_v': ent_v}
         return mv
 
-    def get_kfs(self, keyinputset='Default'):
-        """get dif ferent estimates for  Keyfigures depending on v_key_inputs (ie Fundamentals)"""
+    def pivot_keyinputs_of_set(self, chosen_set='Default'):
         f = self.Fundamentals
-        f = f[f.Set_name == keyinputset]
-        f = f.pivot(index='period_end_date', columns='KeyInput_name')['KeyInput_value']  # transpose inputs for CFs calculation per date
+        f = f[f.Set_name == chosen_set]
+        f = f.pivot(index='period_end_date', columns='KeyInput_name')[
+            'KeyInput_value']  # transpose inputs for CFs calculation per date
+        # tricky: add company spec scenarios!!!
+        return f
 
-        #help functions to get valid keyfig-columns only (any missing input -> None-Keyfig)
-        def get_col(colname,f=f,sign=1):
-            if colname in f.columns:
-                #todo check structure
-                col_out =sign*f[colname]
-            else:
-                col_out = None
-            return col_out
+    # def get_kf_valuations(self,keyinputset='Default',displayMethod='YtFV', discountRate=None, exclude_hist_val=False):
+    # wrapper to loop through all KFs and get the desired valuation for it
 
-        def sum_or_none(list):
-            if not any(x is None for x in list):
-                if len(list) == 1:
-                    s = list[0]
-                else:
-                    s = sum(list)
-            else:
-                s=None
-            return s
-
-        # start calculating the keyfigures and put them in KFs
-        KFs = []
-        if keyinputset == 'Default':
-            # Value estimates
-            kf_type = 'Value_estimate'
-            kf_is_sum = [get_col(colname='AssetBase')]
-            KFs.append(KF('AssetBase',sum_or_none(kf_is_sum),kf_type))
-            kf_is_sum.append(get_col('Cash',sign=-1))
-            KFs.append(KF('AssetBaseNetCash',sum_or_none(kf_is_sum),kf_type))
-
-            # # Debt figures
-            # kf_['Debt pct'] = f['Liabilities_EV'] / f['AssetBase']
-            # kf_type['Debt pct'] = 'Debt_figure'
-
-            # CF estimates Entity
-            kf_type = 'CF_est_Ent'
-            kf_is_sum = [get_col('rR') , get_col('rCfix') ]
-            op_earn_ent = sum_or_none(kf_is_sum)
-            KFs.append(KF('Operating Earnings',op_earn_ent,kf_type))
-
-
-            op_earn_ent_nc = sum_or_none([op_earn_ent,get_col('ncIt')])
-            KFs.append(KF('Operating Earnings and non-core', sum_or_none(kf_is_sum), kf_type))
-
-            kf_is_sum = [get_col('rR'), get_col('rCfix'),get_col('capex')]
-            KFs.append(KF('Operating Earnings after capex', sum_or_none(kf_is_sum), kf_type))
-
-            # CF estimates Equity
-            kf_type = 'CF_est_Equ'
-            kf_is_sum = [op_earn_ent,get_col('rCinterest'),get_col('rRinterest')]
-            earn_ex_tax = sum_or_none(kf_is_sum)
-            kf_is_sum = [op_earn_ent_nc, get_col('rCinterest'), get_col('rRinterest')]
-            earn_ex_tax_nc = sum_or_none(kf_is_sum)
-            if get_col('tax rate') is None:
-                print("no tax rate -> 0taxes assumed")
-                earn=earn_ex_tax
-                earn_nc = earn_ex_tax_nc
-
-            else:
-                earn = earn_ex_tax*(1-get_col('tax rate'))
-                earn_nc = earn_ex_tax_nc*(1-get_col('tax rate'))
-
-
-            KFs.append(KF('Operating Earnings Equ', earn, kf_type))
-            KFs.append(KF('Operating Earnings incl non-core', earn_nc, kf_type))
-            earn_cpx = sum_or_none([earn,get_col('capex')])
-            KFs.append(KF('Operating Earnings after capex Equ', earn_cpx, kf_type))
-
-            KFs.append(KF('NetIncome', get_col('NetIncome_reported'), kf_type))
-
-            KFs.append(KF('operating CF', get_col('operatingCF_reported'), kf_type))
-
-            kf_is_sum = [get_col('operating CF'),get_col('capex')]
-            KFs.append(KF('operating CF after capex', sum_or_none(kf_is_sum), kf_type))
-
-        else:
-            print("not defined how to handle keyinputset '" + keyinputset + "' yet")
-
-        return KFs
-
-    # def get_FV(self, historic_since=None,keyinputset='Default'): #used parameters to filter from v_key_inputs: Set, statement (+ make a check that not 2statements for same item!!!), then  group by period end (annualize if necessary!)
+    # def get_FV(self, historic_since=None,keyinputset='Default'):
+    # used parameters to filter from v_key_inputs: Set, statement
+    # (+ make a check that not 2statements for same item!!!), then  group by period end (annualize if necessary!)
     #     """calculate FV(s) of the company"""
     #     # base on data from
     #     # set
@@ -205,8 +103,6 @@ class Company:
     #
     #         #return keyfigset (consisting of dicts (date, keyfig, scope)
 
-
-
     def die(self):
         """removal of a company"""
         print("Company", self.ticker, "left the universe")
@@ -221,22 +117,235 @@ class Company:
 
     # def remove_all_companies():
     #     instance.die() or instance in Company.instances
+
+    @classmethod
+    def current_population_members(cls):
+        memb = []
+        for i in cls.instances:
+            memb.append(i.ticker)
+        return memb
+
+    @classmethod
+    def get_mvs(cls, price_source='std_yahoo', keyinputset='Default', liability_keyinput='Liabilities_EV',
+                hist_dates=None):
+        """get the market values for each instance in the class and put it in a dataframe """
+        all_companies = cls.instances
+        if hist_dates is not None:
+            initialize_output_array = True
+            for i in all_companies:
+                if initialize_output_array:
+                    try:
+                        mv_i = i.get_mv(price_source=price_source, hist_since=min(hist_dates))
+                        equ_vs = pd.DataFrame(columns=cls.current_population_members(),index = hist_dates.insert(len(hist_dates),mv_i['equ_v'].index[-1]))
+                        ent_vs = equ_vs #empty df can be the same + like this lacking ent-values in first tickers dont cause
+                        equ_vs[i.ticker] = pd.merge_asof(equ_vs[i.ticker].to_frame(), mv_i['equ_v'].to_frame(),
+                                                         left_index=True, right_index=True,
+                                                         direction='backward').iloc[:, 1]
+
+                        ent_vs[i.ticker] = pd.merge_asof(ent_vs[i.ticker].to_frame(), mv_i['equ_v'].to_frame(),
+                                                         left_index=True, right_index=True,
+                                                         direction='backward').iloc[:, 1]
+                        initialize_output_array = False
+                    except:
+                        initialize_output_array = True #just do initialization with next run
+                        print("for company "+i.ticker+" not enough fundamental data found, output initialisation will be done next run")
+                else:
+                    mv_i = i.get_mv(price_source=price_source,hist_since=min(hist_dates))
+                #assign latest market values to periods by merge operation (focusing just on the 2nd column of the merge)
+                    equ_vs[i.ticker] = pd.merge_asof(equ_vs[i.ticker].to_frame(),mv_i['equ_v'].to_frame(),
+                                                     left_index=True,right_index=True,direction='backward').iloc[:,1]
+
+                    ent_vs[i.ticker] = pd.merge_asof(ent_vs[i.ticker].to_frame(),mv_i['equ_v'].to_frame(),
+                                                     left_index=True,right_index=True,direction='backward').iloc[:,1]
+                mv_i = []
+        else:
+            # define output tables
+            equ_vs = pd.DataFrame(columns=cls.current_population_members())
+            ent_vs = pd.DataFrame(columns=cls.current_population_members())
+            for i in all_companies:
+                try:
+                    mv_i = i.get_mv(price_source=price_source, keyinputset=keyinputset, liability_keyinput=liability_keyinput,
+                                    hist_since=hist_dates)
+                    equ_vs[i.ticker] = mv_i['equ_v'].values
+                    ent_vs[i.ticker] = mv_i['ent_v'].values
+                    mv_i = []
+                except:
+                    print("for company " + i.ticker + " not enough fundamental data found to calculate MVs")
+        MVs = {'ent_vs': ent_vs, 'equ_vs': equ_vs}
+        return (MVs)
+        # example
+        # cls = Company
+        # price_source = 'std_yahoo'; keyinputset = 'Default'; liability_keyinput = 'Liabilities_EV';
+        # hist_dates = cls.get_kf('NetIncome').index#.date
+        # mvs = get_mvs(cls,hist_dates=hist_dates);type(mvs['ent_vs'])
+
     @classmethod
     def compare(cls, start, end,
                 normalize_by='shortest'):  # add: ,comparison_way=prices, prices normalized, prices_to_invest,valuations,...
         """plots the current members of Companies in the defined way"""
-        import sys
-        sys.path.append(r'C:\Users\MichaelSchwarz\PycharmProjects\FinanceProjects')
-        import MyFuncGeneral as My
         tickers = {instance.ticker for instance in cls.instances}
-        df = My.get_tickers_history(start, end, tickers, 'Close', normalize_by=normalize_by)
-        import plotly.graph_objects as go
+        df = My.get_tickers_history(tick_list = list(tickers), start=start, end=end, this_price='Close',
+                                    normalize_by=normalize_by)
+
         fig_to_plot = go.Figure([{
             'x': df.index,
             'y': df[col],
             'name': col
         } for col in df.columns])
         return fig_to_plot
+
+    @classmethod
+    def get_vals(cls, chosen_kfs, keyinputset='Default', calcMethod='YtFV', discountRate=None):
+        """wrapper to loop through and calcualte the valuations for the whole population with respect to the KFs desired  !
+            ----------
+            Returns Valuation for the whole population (per company year/scenario)
+            -------
+        """
+        kf_mv_lu = {
+            'AssetBase': 'ent_v',
+
+            'Operating Earnings': 'ent_v',
+            'Operating Earnings incl non-core': 'ent_v',
+            'Operating Earnings after capex': 'ent_v',
+
+            'Operating Earnings Equ': 'equ_v',
+            'Operating Earnings Equ incl non-core': 'equ_v',
+            'Operating Earnings after capex Equ': 'equ_v',
+            'NetIncome': 'equ_v',
+            'operating CF': 'equ_v',
+            'operating CF after capex': 'equ_v'
+            # 'Debt_figure'
+        }
+        assert(chosen_kfs in kf_mv_lu)
+        # start calculation KF by kf
+
+        initialize = True
+        for kf in chosen_kfs:
+                print("start calculation for keyfigure " + kf)
+                this_kf = cls.get_kf(kf)
+                if initialize == True:
+                    VAL = []  # xr.DataArray like for kid_all??
+                    hist_dates=this_kf.index
+                    mvs=get_mvs(hist_dates=hist_dates)
+
+                this_val = cls.get_val(this_kf, mvs[kf_mv_lu[kf]], calcMethod='YtFV', WACC=None)
+                VAL.append(this_val)
+                print("successfully finished calculation for keyfigure " + kf)
+
+        # KFs.append(KF(keyfigure,kf_val,kf_type))
+
+        # example
+        #chosen_kfs = ['NetIncome', 'AssetBase', 'Operating Earnings', 'adf']
+        #cls = Company
+
+    @classmethod
+    def get_val(cls, kf, mv, calcMethod='YtFV', WACC=None):
+        """get valuation based on keyfigure, market value and method
+                    =>here simply use FV and MV and calculate valuation as specified!
+            displayMethod must be in: 'YtFV' (Yield to FairValue), 'Premium/discount', 'Multiple'
+
+            =>mv can be one observation of Entity and Equity Value or a series of it! For every date with a mv provided the kf_valuation is done!
+
+
+                    assert(displayMethod in ['YtFV' ,'Premium/discount','Multiple'])
+            require( displayMethod in ['YtFV' ,'Premium/discount'] & discountRate != None) #only for Multiple no discountRate is required
+
+            proper leverage adjustment for equity valuation!
+
+        """
+
+    @classmethod
+    def get_kf(cls, kf, keyinputset='Default'):
+        """get different estimates for  Keyfigures depending on v_key_inputs_from_scenarios (ie Fundamentals)"""
+        # here the  logic on keyfigure calculation based on keyinputs is defined!
+        # each keyfigure is calculated for the whole population and across as certain inputs might be derived from population/historic  averages/medians!)
+
+        all_companies = cls.instances
+        all_tickers = []
+        for i in all_companies:
+            all_tickers.append(i.ticker)
+        assert (keyinputset == 'Default')  # calculation still needs to be defined for other keyinputsets -> aim for a more generic structure (where a get_set_kf function can be created!)
+
+        #collect  keyinput_information for all companies into ki_a
+        initialize_output_array = True
+        for comp in all_companies:
+            try:
+                ki = comp.pivot_keyinputs_of_set(chosen_set=keyinputset)  # keyinputs
+                if initialize_output_array:
+                    # initialize 3d Dataframe to store keyinput data (kid)
+                    # do with select distinct?
+                    empty_arr = np.full(fill_value=np.nan,shape=(len(ki.index),len(ki.columns),len(all_companies)))
+                    keyinputs = ki.columns.values
+                    periods = ki.index.values
+                    #put ki into 3d array for all keyinputs ki_a
+                    ki_a = xr.DataArray(data=empty_arr, dims=[ "period","keyinput","company"],
+                                           coords=[("period", periods),("keyinput", keyinputs),("company",all_tickers)
+                        ])  # xr.Dataset() #http://xarray.pydata.org/en/stable/pandas.html#pandas
+                    #ki_a = xr.DataArray(kid,dims=[ "keyinput", "period","company"])
+                    initialize_output_array = False
+                ki_a.loc[:,:,comp.ticker] = ki #todo refine to allow for only partial entries too!
+            except:
+                print("loading for company " + comp.ticker + " failed - na values set instead")
+           # ki_a.loc[:, :, comp.ticker].to_pandas()
+        # todo calc  avg  across sections time for use to calc certain figures!
+
+        # start to calculate kf values across periods and companies (simultaneously from 3d ki_a!)
+        def ki_ (ki,Na2Zero=True):
+            ki = ki_a.loc[:,ki,:].to_pandas()
+            if Na2Zero:
+                ki = ki.fillna(0)
+            return ki
+
+        try:  #calculation will only work if the required keyinputs are there for at least some companies!
+            if kf in ['AssetBase']:
+                if kf == 'AssetBase':
+                    kf_val = ki_('AssetBase',Na2Zero=False)
+            # elif keyfigure in ['Debt pct']:
+            # # Debt figures
+            # kf_['Debt pct'] = f['Liabilities_EV'] / f['AssetBase']
+            # kf_type['Debt pct'] = 'Debt_figure'
+            elif kf in ['Operating Earnings', 'Operating Earnings incl non-core', 'Operating Earnings after capex']:
+                op_earn_ent = ki_('op_earn_ent',Na2Zero=False)  # basic buildidng block for CF estimates Ent
+                if kf == 'Operating Earnings':
+                    kf_val = op_earn_ent
+                elif kf == 'Operating Earnings incl non-core':
+                    kf_val = op_earn_ent + ki_('ncIt')
+                elif kf == 'Operating Earnings after capex':
+                    kf_val = ki_('rR') + ki_('rCfix') + ki_('capex',Na2Zero=False)
+            elif kf in ['Operating Earnings Equ', 'Operating Earnings Equ incl non-core', 'Operating Earnings after capex Equ']:
+                # basic building blocks for above CF estimates Equity
+                op_earn_equ_ex_t = ki_('op_earn_ent') +\
+                                   ki_('rCinterest') + \
+                                   ki_('rRinterest')# eq earning before tax
+                tax = ki_('tax rate')
+                # calc different CF estimates Equity
+                if kf == 'Operating Earnings Equ':
+                    kf_val = op_earn_equ_ex_t * (1 - tax)
+                elif kf == 'Operating Earnings Equ incl non-core':
+                    kf_val = (op_earn_equ_ex_t + ki_('ncIt')) * (1 - tax)
+                elif kf == 'Operating Earnings after capex Equ':
+                    kf_val = (op_earn_equ_ex_t + ki_('capex',Na2Zero=False)) * (1 - tax)
+            elif kf in ['NetIncome', 'operating CF', 'operating CF after capex']:
+                if kf == 'NetIncome':
+                    kf_val = ki_('NetIncome_reported',Na2Zero=False)
+                elif kf == 'operating CF':
+                    kf_val = ki_('operatingCF_reported',Na2Zero=False)
+                elif kf == 'operating CF after capex':
+                    kf_val = ki_('operatingCF_reported',Na2Zero=False) + ki_('capex',Na2Zero=False)
+            else:
+                print("undefined keyfigure specified. Typo????")
+            # else:
+            #     print("not defined how to handle keyinputset '" + keyinputset + "' yet")
+        except KeyError as e:
+            print("the KF '"+kf +"' cannot be calculated as keyinput '"  + e.args[0] + "' is lacking")
+            #todo define Nan value for kf_val
+        except:
+            print(kf+"could not be calculated")
+        return kf_val
+
+        # example
+        # cls = Company
+        # kf='AssetBase'
 
     @staticmethod
     def remove_all_companies():
@@ -255,14 +364,17 @@ if __name__ == '__main__':
     #  Company.compare(start="2015-01-05", end="2020-08-12")
     #  fig = i.compare(start="2020-01-05", end="2020-08-12")
     #  fig.show()
-
     ticker = "NESN.SW"
+    P=Company("PRX.AS")
     N = Company(ticker)
-    mv = N.get_mv()
+    mv_N = N.get_mv()
     A = Company('ALB')
     mvA = N.get_mv()
-    kf = A.get_kfs()
-    kf['KFs'].transpose()
+    f_pvt = N.pivot_keyinputs_of_set()
+    f_pvtA=A.pivot_keyinputs_of_set()
+    N.get_kf('NetIncome')
+    mv_now = P.get_mvs()
+    mv_all=P.get_mvs(hist_dates=hist_dates)
 #   tickers = {instance.ticker for instance in Company.instances}
 #  print(CurrentUniverse)
 # print(c1.Fundamentals)
