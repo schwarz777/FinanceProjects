@@ -22,6 +22,7 @@ class Company:
     instances = []
     population = 0
 
+
     def __init__(self, CompanyTicker):  # future parameter datasource as here the selection of the datasource happens
         """Initializes the company."""
         self.ticker = CompanyTicker
@@ -52,7 +53,6 @@ class Company:
         """
         if 'std_yahoo' != price_source:
             raise ValueError('Only source std_yahoo defined. You gave: ', price_source)
-
         kid = self.pivot_keyinputs_of_set(keyinputset)  # get pivotted key input data
         if hist_since is None:
             last_f = kid.loc[kid.index == max(kid.index), :]
@@ -69,6 +69,9 @@ class Company:
             mv = {'equ_v': equ_v,
                   'ent_v': ent_v}
         return mv
+        #example
+        #hist_since='2019-12-31';  keyinputset='Default'; price_source='std_yahoo' ; liability_keyinput='Liabilities_EV'
+
 
     def pivot_keyinputs_of_set(self, chosen_set='Default'):
         f = self.Fundamentals
@@ -137,12 +140,13 @@ class Company:
                     try:
                         mv_i = i.get_mv(price_source=price_source, hist_since=min(hist_dates))
                         equ_vs = pd.DataFrame(columns=cls.current_population_members(),index = hist_dates.insert(len(hist_dates),mv_i['equ_v'].index[-1]))
-                        ent_vs = equ_vs #empty df can be the same + like this lacking ent-values in first tickers dont cause
+                        ent_vs = pd.DataFrame(columns=cls.current_population_members(),index = hist_dates.insert(len(hist_dates),mv_i['ent_v'].index[-1]))
+                                            #empty df can be the same + like this lacking ent-values in first tickers dont cause
                         equ_vs[i.ticker] = pd.merge_asof(equ_vs[i.ticker].to_frame(), mv_i['equ_v'].to_frame(),
                                                          left_index=True, right_index=True,
                                                          direction='backward').iloc[:, 1]
 
-                        ent_vs[i.ticker] = pd.merge_asof(ent_vs[i.ticker].to_frame(), mv_i['equ_v'].to_frame(),
+                        ent_vs[i.ticker] = pd.merge_asof(ent_vs[i.ticker].to_frame(), mv_i['ent_v'].to_frame(),
                                                          left_index=True, right_index=True,
                                                          direction='backward').iloc[:, 1]
                         initialize_output_array = False
@@ -150,13 +154,16 @@ class Company:
                         initialize_output_array = True #just do initialization with next run
                         print("for company "+i.ticker+" not enough fundamental data found, output initialisation will be done next run")
                 else:
-                    mv_i = i.get_mv(price_source=price_source,hist_since=min(hist_dates))
-                #assign latest market values to periods by merge operation (focusing just on the 2nd column of the merge)
-                    equ_vs[i.ticker] = pd.merge_asof(equ_vs[i.ticker].to_frame(),mv_i['equ_v'].to_frame(),
+                    try:
+                        mv_i = i.get_mv(price_source=price_source,hist_since=min(hist_dates))
+                        #assign latest market values to periods by merge operation (focusing just on the 2nd column of the merge)
+                        equ_vs[i.ticker] = pd.merge_asof(equ_vs[i.ticker].to_frame(),mv_i['equ_v'].to_frame(),
                                                      left_index=True,right_index=True,direction='backward').iloc[:,1]
 
-                    ent_vs[i.ticker] = pd.merge_asof(ent_vs[i.ticker].to_frame(),mv_i['equ_v'].to_frame(),
+                        ent_vs[i.ticker] = pd.merge_asof(ent_vs[i.ticker].to_frame(),mv_i['ent_v'].to_frame(),
                                                      left_index=True,right_index=True,direction='backward').iloc[:,1]
+                    except:
+                        print("for company "+i.ticker+" not enough fundamental data found to calculate MVs")
                 mv_i = []
         else:
             # define output tables
@@ -164,14 +171,14 @@ class Company:
             ent_vs = pd.DataFrame(columns=cls.current_population_members())
             for i in all_companies:
                 try:
-                    mv_i = i.get_mv(price_source=price_source, keyinputset=keyinputset, liability_keyinput=liability_keyinput,
-                                    hist_since=hist_dates)
+                    mv_i = i.get_mv(price_source=price_source, keyinputset=keyinputset, liability_keyinput=liability_keyinput)
                     equ_vs[i.ticker] = mv_i['equ_v'].values
                     ent_vs[i.ticker] = mv_i['ent_v'].values
                     mv_i = []
                 except:
                     print("for company " + i.ticker + " not enough fundamental data found to calculate MVs")
-        MVs = {'ent_vs': ent_vs, 'equ_vs': equ_vs}
+        MVs = {'ent_v': ent_vs,
+               'equ_v': equ_vs}
         return (MVs)
         # example
         # cls = Company
@@ -226,12 +233,13 @@ class Company:
                 if initialize == True:
                     VAL = []  # xr.DataArray like for kid_all??
                     hist_dates=this_kf.index
-                    mvs=get_mvs(hist_dates=hist_dates)
+                    mvs=cls.get_mvs(hist_dates=hist_dates)
 
-                this_val = cls.get_val(this_kf, mvs[kf_mv_lu[kf]], calcMethod='YtFV', WACC=None)
+                this_val = cls.get_val(kf=this_kf,mvs= mvs,kf_type = kf_mv_lu[kf], calcMethod='YtFV', WACC=None)
                 VAL.append(this_val)
                 print("successfully finished calculation for keyfigure " + kf)
-
+        print("sucessfully finished valuations based on required kfs")
+        return[VAL]
         # KFs.append(KF(keyfigure,kf_val,kf_type))
 
         # example
@@ -239,20 +247,85 @@ class Company:
         #cls = Company
 
     @classmethod
-    def get_val(cls, kf, mv, calcMethod='YtFV', WACC=None):
-        """get valuation based on keyfigure, market value and method
-                    =>here simply use FV and MV and calculate valuation as specified!
-            displayMethod must be in: 'YtFV' (Yield to FairValue), 'Premium/discount', 'Multiple'
+    def get_val(cls, kfv:pd.DataFrame, mvs:dict,kftype:str, CoD=0.02, displayMethod='YtFV', WACC=None):
+        """get valuation based on keyfigure_value, market value and method, based on certain WACC.
+            A class function as in the relative framework it might well be necessary to perform it simultaneously on the
+            whole population to estimate 'population WACC' (then derive the proper equity and entity discount figures
+            for the single companies.)
 
-            =>mv can be one observation of Entity and Equity Value or a series of it! For every date with a mv provided the kf_valuation is done!
-
-
-                    assert(displayMethod in ['YtFV' ,'Premium/discount','Multiple'])
-            require( displayMethod in ['YtFV' ,'Premium/discount'] & discountRate != None) #only for Multiple no discountRate is required
-
-            proper leverage adjustment for equity valuation!
-
+           Parameters:
+           * kfv: keyfigure value of a specific kf (can be a time series)
+           * mvs: equity and entity values of the companies (can be time series)
+           # kftype: type of keyfigure (mainly ent or equ)
+           * CoD_default: default value for cost of debt. is taken if incomplete CoD-estimates from companies available
+             Todo: should be made dynamic in some way, clearly changing over time! incorporate Tax in WACC-calc
+           * displayMethod specifies how to relate kfv and mv.
+             It must be in: 'YtFV' (Yield to FairValue), 'Premium/discount', 'Multiple','Other'
+           * WACC: Weighted average cost of debt. If none it will be calculated to match a fair valuation on the
+           population with respect to the kf to value. This means different WACCs result for different kfs
+           FORMULA: WACC = (equ_v / ent_v) × CoE + (D / ent_v) × CoD × (1 − tax)
+           Fair Valuation defined as: kf_ent/WACC = EV  (assuming kf_ent = infinite CF to the company)
+           kf_ent for equity kf: kf + Debt * CoD =kf_ent
         """
+        assert(displayMethod in ['YtFV' , 'Premium/discount', 'Multiple','Other'])
+        assert(kftype in ['equ_v','ent_v'])
+        assert (WACC is None or WACC == 'hist' or isinstance(WACC, float))
+
+        #project kfv in the future if still lacking
+        kfv.loc[max(mvs['equ_v'].index)]=kfv.loc[max(kfv.index),:]
+
+        #get parameters for rate calculations
+        ent_v = mvs['ent_v']
+        equ_v = mvs['equ_v']
+        D = ent_v - equ_v
+        if WACC != 'hist':
+            ent_v = ent_v.iloc[-1,:]
+            equ_v = equ_v.iloc[-1, :]
+            D = D.iloc[-1,:]
+
+        #get discount rate needed
+        #get WACC if needed
+        if WACC is None or WACC == 'hist':
+            #define entity value
+            if kftype == 'equ_v':
+                kfv_ent = kfv+D*CoD
+            else:
+                kfv_ent = kfv
+            #calculate WACC on present or hist FVs and MVs: average across population is taken
+            if WACC == 'hist':
+                WACC_all = kf_ent/ent_v
+                WACC=WACC_all.transpose().mean()
+            else:
+                WACC_all = kf_ent/ent_v
+                WACC = WACC_all.transpose().mean()
+
+        #calculate equity discount rates if needed (depending on comapny leverage)
+        if kftype == 'equ_v':
+            #WACC = (equ_v / ent_v) × CoE + (D / ent_v) × CoD × (1 − tax)
+            #leads to (D=ent_v-equ_v):
+            #CoE = ent_v/eq_v *(WACC-CoD*(1-tax)) + CoD * (1-tax)
+            tax = 0.15
+            CoE = (ent_v/equ_v).mul(WACC-CoD*(1-tax),axis=0) +CoD*(1-tax)
+            fv = kfv / CoE
+            p =  mvs['equ_v']
+        else:
+            fv = kfv.div(WACC,axis=0)
+            p =  mvs['ent_v']
+
+        #return the signal s based on chosen displayMethod
+        if (displayMethod == 'YtFV'):
+            s = fv / p -1
+        elif (displayMethod == 'Premium'):
+            s = p / fv -1
+        elif (displayMethod == 'Multiple'):
+            s = p / kfv
+        else:
+            print("unspecified display Method selected")
+        return(s)
+        #example
+        #cls=Company;kfv =cls.get_kf('NetIncome');mvs = cls.get_mvs(hist_dates=kfv.index);CoD_default=0.02; displayMethod='YtFV'
+        #WACC = 'hist'
+
 
     @classmethod
     def get_kf(cls, kf, keyinputset='Default'):
@@ -337,7 +410,7 @@ class Company:
             # else:
             #     print("not defined how to handle keyinputset '" + keyinputset + "' yet")
         except KeyError as e:
-            print("the KF '"+kf +"' cannot be calculated as keyinput '"  + e.args[0] + "' is lacking")
+            print("the KF '"+ kf +"' cannot be calculated as keyinput '"  + e.args[0] + "' is lacking")
             #todo define Nan value for kf_val
         except:
             print(kf+"could not be calculated")
@@ -364,17 +437,16 @@ if __name__ == '__main__':
     #  Company.compare(start="2015-01-05", end="2020-08-12")
     #  fig = i.compare(start="2020-01-05", end="2020-08-12")
     #  fig.show()
-    ticker = "NESN.SW"
+    N = Company("NESN.SW")
     P=Company("PRX.AS")
-    N = Company(ticker)
     mv_N = N.get_mv()
     A = Company('ALB')
     mvA = N.get_mv()
     f_pvt = N.pivot_keyinputs_of_set()
     f_pvtA=A.pivot_keyinputs_of_set()
     N.get_kf('NetIncome')
-    mv_now = P.get_mvs()
-    mv_all=P.get_mvs(hist_dates=hist_dates)
+    mv_now = N.get_mvs()
+    mv_all=N.get_mvs(hist_dates = f_pvt.index)
 #   tickers = {instance.ticker for instance in Company.instances}
 #  print(CurrentUniverse)
 # print(c1.Fundamentals)
