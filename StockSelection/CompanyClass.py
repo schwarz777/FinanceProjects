@@ -14,33 +14,47 @@ import xarray as xr
 import datetime as dt
 sys.path.append(r'C:\Users\MichaelSchwarz\PycharmProjects\FinanceProjects')
 import MyFuncGeneral as My
+sys.path.append(r'C:\Users\MichaelSchwarz\PycharmProjects\FinanceProjects\StockSelection')
+import yahoo_fundamentals as yhf
 
-
-class Company:
+#todo: find way to avoid double company instsances:
+# def multiton(cls):
+#    instances = {}
+#    def getinstance(id):
+#       if id not in instances:
+#          instances[id] = cls(id)
+#       return instances[id]
+#    return getinstance
+#
+# @multiton
+class Company():
     """Represents a company, with a ticker."""
     # A class variable, counting the number of Companies
-    instances = []
+    #instances = []
     population = 0
-
 
     def __init__(self, CompanyTicker):  # future parameter datasource as here the selection of the datasource happens
         """Initializes the company."""
+        self.id = CompanyTicker
         self.ticker = CompanyTicker
         Company.instances.append(self)
         print("(Initializing {})".format(self.ticker))
         Company.population += 1
 
         # "get all key inputs for this Ticker from mySQL"
-
         cnx = My.cnx_mysqldb('fuyu_jibengong')
         # get yahoo std data as basic to start with
-        query = "select Set_name, KeyInput_name,period_end_date,KeyInput_value from v_key_inputs_with_scenarios " + \
+        query = "select Set_name, KeyInput_name,period_end_date,KeyInput_value " \
+                "from v_key_inputs_with_scenarios " + \
                 "where source = 'std_yahoo' and reporting_duration_in_months=12 and " + \
                 "Ticker_yh='" + CompanyTicker + "' and " + \
                 "scenario_name = 'None' "
         # todo: dont filter for scenario_name but build scenario alternative properly!!!
         self.Fundamentals = pd.read_sql(query, con=cnx)
-        # TODO: check if update needed!
+        if(self.Fundamentals.empty):
+            yhf.update_db(self.ticker,addLackingFK=True)
+        #elif(dt.year(max(self.Fundamentals.index)) < 2019 )
+        self.Fundamentals = pd.read_sql(query, con=cnx)
 
     def iam(self):
         """introduction of the company"""
@@ -118,15 +132,10 @@ class Company:
         """Prints the current number of companies."""
         print("We have {:d} companies.".format(cls.population))
 
-    # def remove_all_companies():
-    #     instance.die() or instance in Company.instances
-
     @classmethod
     def current_population_members(cls):
-        memb = []
-        for i in cls.instances:
-            memb.append(i.ticker)
-        return memb
+        memb = {instance.ticker for instance in cls.instances}
+        return list(memb)
 
     @classmethod
     def get_mvs(cls, price_source='std_yahoo', keyinputset='Default', liability_keyinput='Liabilities_EV',
@@ -190,7 +199,7 @@ class Company:
     def compare(cls, start, end,
                 normalize_by='shortest'):  # add: ,comparison_way=prices, prices normalized, prices_to_invest,valuations,...
         """plots the current members of Companies in the defined way"""
-        tickers = {instance.ticker for instance in cls.instances}
+        tickers = cls.current_population_members()
         df = My.get_tickers_history(tick_list = list(tickers), start=start, end=end, this_price='Close',
                                     normalize_by=normalize_by)
 
@@ -202,7 +211,7 @@ class Company:
         return fig_to_plot
 
     @classmethod
-    def get_vals(cls, chosen_kfs, keyinputset='Default', calcMethod='YtFV', discountRate=None):
+    def get_vals(cls, chosen_kfs, keyinputset='Default', displayMethod='YtFV', WACC=None):
         """wrapper to loop through and calcualte the valuations for the whole population with respect to the KFs desired  !
             ----------
             Returns Valuation for the whole population (per company year/scenario)
@@ -223,27 +232,36 @@ class Company:
             'operating CF after capex': 'equ_v'
             # 'Debt_figure'
         }
-        assert(chosen_kfs in kf_mv_lu)
         # start calculation KF by kf
 
         initialize = True
         for kf in chosen_kfs:
+           try:
+                assert (kf in kf_mv_lu)
                 print("start calculation for keyfigure " + kf)
-                this_kf = cls.get_kf(kf)
+                this_kf = cls.get_kf(kf,keyinputset=keyinputset)
                 if initialize == True:
-                    VAL = []  # xr.DataArray like for kid_all??
                     hist_dates=this_kf.index
-                    mvs=cls.get_mvs(hist_dates=hist_dates)
+                    companies = this_kf.columns
+                    mvs=cls.get_mvs(hist_dates=hist_dates,keyinputset=keyinputset)
+                    periods = mvs['equ_v'].index
+                    empty_arr = np.full(fill_value=np.nan,shape=(len(periods),len(chosen_kfs),len(companies)))
+                    VAL = xr.DataArray(data=empty_arr, dims=["period", "kf", "company"],
+                                       coords=[("period", periods),
+                                               ("kf", chosen_kfs),
+                                               ("company", companies) ]
+                                       )
+                    initialize = False
 
-                this_val = cls.get_val(kf=this_kf,mvs= mvs,kf_type = kf_mv_lu[kf], calcMethod='YtFV', WACC=None)
-                VAL.append(this_val)
-                print("successfully finished calculation for keyfigure " + kf)
+
+                VAL.loc[:,kf,:] = cls.get_val(kfv=this_kf,mvs= mvs,kftype = kf_mv_lu[kf], CoD=0.02,displayMethod=displayMethod, WACC=WACC)
+                print("successfully finished calculation for keyfigure '" + kf +"'")
+           except:
+                print("kf '"+ kf +"' could not be calculated and remains set to na. Is it a non-defined kf?")
         print("sucessfully finished valuations based on required kfs")
-        return[VAL]
-        # KFs.append(KF(keyfigure,kf_val,kf_type))
-
+        return VAL
         # example
-        #chosen_kfs = ['NetIncome', 'AssetBase', 'Operating Earnings', 'adf']
+        #chosen_kfs = ['NetIncome', 'AssetBase', 'Operating Earnings'];  keyinputset='Default';displayMethod='YtFV';WACC=None
         #cls = Company
 
     @classmethod
@@ -293,11 +311,11 @@ class Company:
                 kfv_ent = kfv
             #calculate WACC on present or hist FVs and MVs: average across population is taken
             if WACC == 'hist':
-                WACC_all = kf_ent/ent_v
-                WACC=WACC_all.transpose().mean()
+                WACC_companies = kfv_ent/ent_v
+                WACC=WACC_companies.transpose().mean()
             else:
-                WACC_all = kf_ent/ent_v
-                WACC = WACC_all.transpose().mean()
+                WACC_companies = kfv_ent.iloc[-1,:]/ent_v
+                WACC = WACC_companies.transpose().mean()
 
         #calculate equity discount rates if needed (depending on comapny leverage)
         if kftype == 'equ_v':
@@ -323,9 +341,8 @@ class Company:
             print("unspecified display Method selected")
         return(s)
         #example
-        #cls=Company;kfv =cls.get_kf('NetIncome');mvs = cls.get_mvs(hist_dates=kfv.index);CoD_default=0.02; displayMethod='YtFV'
+        #cls=Company;kfv =cls.get_kf('NetIncome');mvs = cls.get_mvs(hist_dates=kfv.index);CoD=0.02; displayMethod='YtFV'
         #WACC = 'hist'
-
 
     @classmethod
     def get_kf(cls, kf, keyinputset='Default'):
@@ -334,9 +351,7 @@ class Company:
         # each keyfigure is calculated for the whole population and across as certain inputs might be derived from population/historic  averages/medians!)
 
         all_companies = cls.instances
-        all_tickers = []
-        for i in all_companies:
-            all_tickers.append(i.ticker)
+        all_tickers = cls.current_population_members()
         assert (keyinputset == 'Default')  # calculation still needs to be defined for other keyinputsets -> aim for a more generic structure (where a get_set_kf function can be created!)
 
         #collect  keyinput_information for all companies into ki_a
@@ -361,7 +376,6 @@ class Company:
                 print("loading for company " + comp.ticker + " failed - na values set instead")
            # ki_a.loc[:, :, comp.ticker].to_pandas()
         # todo calc  avg  across sections time for use to calc certain figures!
-
         # start to calculate kf values across periods and companies (simultaneously from 3d ki_a!)
         def ki_ (ki,Na2Zero=True):
             ki = ki_a.loc[:,ki,:].to_pandas()
@@ -378,7 +392,8 @@ class Company:
             # kf_['Debt pct'] = f['Liabilities_EV'] / f['AssetBase']
             # kf_type['Debt pct'] = 'Debt_figure'
             elif kf in ['Operating Earnings', 'Operating Earnings incl non-core', 'Operating Earnings after capex']:
-                op_earn_ent = ki_('op_earn_ent',Na2Zero=False)  # basic buildidng block for CF estimates Ent
+                op_earn_ent = ki_('rR',Na2Zero=False) + \
+                              ki_('rCvar')  +ki_('rCfix') # basic buildidng block for CF estimates Ent
                 if kf == 'Operating Earnings':
                     kf_val = op_earn_ent
                 elif kf == 'Operating Earnings incl non-core':
@@ -418,7 +433,7 @@ class Company:
 
         # example
         # cls = Company
-        # kf='AssetBase'
+        # kf='Operating Earnings'
 
     @staticmethod
     def remove_all_companies():
@@ -438,15 +453,24 @@ if __name__ == '__main__':
     #  fig = i.compare(start="2020-01-05", end="2020-08-12")
     #  fig.show()
     N = Company("NESN.SW")
-    P=Company("PRX.AS")
+    T = Company("TRUP")
+    G=Company("GUR.SW")
     mv_N = N.get_mv()
     A = Company('ALB')
     mvA = N.get_mv()
     f_pvt = N.pivot_keyinputs_of_set()
     f_pvtA=A.pivot_keyinputs_of_set()
     N.get_kf('NetIncome')
-    mv_now = N.get_mvs()
+    mv_now = Company.get_mvs()
     mv_all=N.get_mvs(hist_dates = f_pvt.index)
-#   tickers = {instance.ticker for instance in Company.instances}
-#  print(CurrentUniverse)
-# print(c1.Fundamentals)
+    kf_all=Company.get_kf('AssetBase')
+    ytfv=N.get_val(kf_all,mv_all,'equ_v')
+    ytfv.plot()
+    V=Company.get_vals(['NetIncome', 'AssetBase'])#, 'Operating Earnings'])
+    V[:,:,0].to_pandas().plot()
+
+    all_kf=['AssetBase','Operating Earnings', 'Operating Earnings incl non-core', 'Operating Earnings after capex','Operating Earnings Equ', 'Operating Earnings Equ incl non-core', 'Operating Earnings after capex Equ','NetIncome', 'operating CF', 'operating CF after capex']
+    Vall=Company.get_vals(all_kf)
+    Vall.loc[:, 'AssetBase', :].to_pandas().plot()
+    #radar plot or parallel coordinates plot.
+
