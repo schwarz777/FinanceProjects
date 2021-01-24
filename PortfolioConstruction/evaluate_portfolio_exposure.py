@@ -28,9 +28,11 @@ def evaluate_portfolio_exposure(put_currentprrices_in_db=False):
 
     # get last closing prices
     for i in range(0, (len(comps))):
-        px = My.get_last_close(comps.loc[i, 'Ticker_yahoo'])
-        comps.loc[i, 'last_price'] = px
-
+        try:
+            px = My.get_last_close(comps.loc[i, 'Ticker_yahoo'])
+            comps.loc[i, 'last_price'] = px.values
+        except:
+            print("for company no price could be loaded")
     if put_currentprrices_in_db:
         import datetime as dt
         prices_current_portfolio = comps[['IssueID','last_price']] # 'yahoo', ,dt.date.today())
@@ -50,7 +52,7 @@ def evaluate_portfolio_exposure(put_currentprrices_in_db=False):
         p_list = prices_current_portfolio.values.tolist()
         cursor.executemany(add_prices,p_list)
         cnx.commit()
-        print(cursor.rowcount, "was inserted.")
+        print(cursor.rowcount, "prices were inserted.")
 
     cursor.close()
     cnx.close()
@@ -74,13 +76,13 @@ def evaluate_portfolio_exposure(put_currentprrices_in_db=False):
 # sunburst Chart
 def cluster_data_for_sunburst_eval(most_inner_cluster):
     import pandas as pd
-    import plotly.express as px
     import sys
     sys.path.append('C:/Users/MichaelSchwarz/.spyder-py3/myPyCode')
     import mysql.connector
 
     fig_portfolio = evaluate_portfolio_exposure(put_currentprrices_in_db=True) #gets portfolio data AND writes current prices in DB!!!
 
+    #todo replace with function My.cnx_mysqldb(database='fuyu'):
     connection = mysql.connector.connect(host='localhost',
                                          database='fuyu',
                                          user='root',
@@ -107,9 +109,9 @@ def cluster_data_for_sunburst_eval(most_inner_cluster):
 
 
 if __name__ == '__main__':
-    dfres = cluster_data_for_sunburst_eval(most_inner_cluster='MSHN')
+    dfres = cluster_data_for_sunburst_eval(most_inner_cluster='GICS')
     import plotly.express as px
-    import psutil
+
     fig = px.sunburst(
         dfres,
         names='child',

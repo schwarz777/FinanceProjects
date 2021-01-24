@@ -20,9 +20,15 @@ def create_companies():
     query = "select * from issues_yh_now_selected"
     comps = pd.read_sql(query, con=cnx)
     c.Company.remove_all_companies()  # remove all companies before new ones are created!
-    for i in comps['Ticker_yahoo']:
-        i = c.Company(i)
-    return  i # example dat
+    if len(comps) == 0 or len(comps) > 20:
+        print("none or too many (>20) companies selected to display - correct in livecode")
+    else:
+        for i in comps['Ticker_yahoo']:
+            try:
+                cobj = c.Company(i)
+            except:
+                print("For selected Company "+i+" the Company-Object could not be generated")
+        return  cobj # example dat
     # arb_company=create_companies()
 
 
@@ -53,8 +59,9 @@ app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 app.layout = html.Div([
 
     dcc.Tabs(id='tabs-example', value='tab-1', children=[
-        dcc.Tab(label='Stocks Relative', value='tab-1'),
-        dcc.Tab(label='Portfolio', value='tab-2'),
+        dcc.Tab(label='Stocks Relative Performances', value='tab-1'),
+        dcc.Tab(label='Stocks Relative Valuations', value='tab-2'),
+        dcc.Tab(label='Portfolio', value='tab-3'),
     ]),
     html.Div(id='tabs-example-content')
 ])
@@ -87,7 +94,7 @@ def render_content(tab):
 
         ])
 
-    elif tab == 'tab-2':
+    elif tab == 'tab-3':
         return html.Div([
             html.H3('Composition by different Clusters'),
             dcc.Dropdown(
