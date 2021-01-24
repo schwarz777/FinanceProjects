@@ -368,10 +368,37 @@ class Company():
                     #put ki into 3d array for all keyinputs ki_a
                     ki_a = xr.DataArray(data=empty_arr, dims=[ "period","keyinput","company"],
                                            coords=[("period", periods),("keyinput", keyinputs),("company",all_tickers)
-                        ])  # xr.Dataset() #http://xarray.pydata.org/en/stable/pandas.html#pandas
+                                       ])  # xr.Dataset() #http://xarray.pydata.org/en/stable/pandas.html#pandas
                     #ki_a = xr.DataArray(kid,dims=[ "keyinput", "period","company"])
                     initialize_output_array = False
-                ki_a.loc[:,:,comp.ticker] = ki #todo refine to allow for only partial entries too!
+
+                else:
+                    #check if ki_a still accomodates all periods and keyinputs
+                    lacking_columns=np.setdiff1d(np.array(ki.columns) , np.array(ki_a.get_index("keyinput")))
+                    lacking_periods = np.setdiff1d(np.array(ki.index), np.array(ki_a.get_index("period")))
+                    if len(lacking_columns)>0 or len(lacking_periods)>0:
+                        if len(lacking_columns)>0:
+                            #add lacking keyinput into ki_a
+                            empty_fill_arr = np.full(fill_value=np.nan,shape=(len(ki_a.get_index("period")),1,len(ki_a.get_index("company"))))
+                            for lc in lacking_columns:
+                                this_empty_fill_arr = xr.DataArray(data=empty_fill_arr, dims=[ "period","keyinput","company"],
+                                                        coords=[("period", periods),("keyinput", np.array([lc])),("company",all_tickers)
+                                                        ])
+                                ki_a = xr.concat([ki_a,this_empty_fill_arr],dim="keyinput")
+                            keyinputs = ki_a.get_index("keyinput").values
+                        elif len(lacking_periods)>0:
+                            #add lacking periods into ki_a
+                            empty_fill_arr = np.full(fill_value=np.nan,shape=(1, len(ki_a.get_index("keyinput")), len(ki_a.get_index("company"))))
+                            for lp in lacking_periods:
+                                this_empty_fill_arr = xr.DataArray(data=empty_fill_arr, dims=["period", "keyinput", "company"],
+                                                        coords = [("period", np.array([lp])), ("keyinput",keyinputs ), ("company", all_tickers)
+                                                ])
+                                ki_a = xr.concat([ki_a, this_empty_fill_arr], dim="period")
+                            periods = ki_a.get_index("period").values
+                    else:
+                        None
+                        #nothing to do the ki_a - array also fits ki of this company
+                 ki_a.loc[ki.index, ki.columns, comp.ticker] = ki
             except:
                 print("loading for company " + comp.ticker + " failed - na values set instead")
            # ki_a.loc[:, :, comp.ticker].to_pandas()
@@ -471,6 +498,6 @@ if __name__ == '__main__':
 
     all_kf=['AssetBase','Operating Earnings', 'Operating Earnings incl non-core', 'Operating Earnings after capex','Operating Earnings Equ', 'Operating Earnings Equ incl non-core', 'Operating Earnings after capex Equ','NetIncome', 'operating CF', 'operating CF after capex']
     Vall=Company.get_vals(all_kf)
-    Vall.loc[:, 'AssetBase', :].to_pandas().plot()
+    Vall.loc[:,'AssetBase', :].to_pandas().plot()
     #radar plot or parallel coordinates plot.
-
+    #https://xarray-contrib.github.io/xarray-tutorial/scipy-tutorial/04_plotting_and_visualization.html
