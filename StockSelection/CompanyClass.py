@@ -398,7 +398,7 @@ class Company():
                     else:
                         None
                         #nothing to do the ki_a - array also fits ki of this company
-                 ki_a.loc[ki.index, ki.columns, comp.ticker] = ki
+                ki_a.loc[ki.index, ki.columns, comp.ticker] = ki
             except:
                 print("loading for company " + comp.ticker + " failed - na values set instead")
            # ki_a.loc[:, :, comp.ticker].to_pandas()
