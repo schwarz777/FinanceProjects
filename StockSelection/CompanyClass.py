@@ -8,6 +8,7 @@ how it is embedded in framework and overview of processes: https://app.diagrams.
 """
 import sys
 import pandas as pd
+import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
 import xarray as xr
@@ -32,6 +33,7 @@ class Company():
     # A class variable, counting the number of Companies
     #instances = []
     population = 0
+    instances =[]
 
     def __init__(self, CompanyTicker):  # future parameter datasource as here the selection of the datasource happens
         """Initializes the company."""
@@ -252,8 +254,6 @@ class Company():
                                                ("company", companies) ]
                                        )
                     initialize = False
-
-
                 VAL.loc[:,kf,:] = cls.get_val(kfv=this_kf,mvs= mvs,kftype = kf_mv_lu[kf], CoD=0.02,displayMethod=displayMethod, WACC=WACC)
                 print("successfully finished calculation for keyfigure '" + kf +"'")
            except:
@@ -351,31 +351,42 @@ class Company():
         # each keyfigure is calculated for the whole population and across as certain inputs might be derived from population/historic  averages/medians!)
 
         all_companies = cls.instances
+        assert(any(all_companies))
         all_tickers = cls.current_population_members()
+        assert(len(all_tickers) == len(all_companies))
         assert (keyinputset == 'Default')  # calculation still needs to be defined for other keyinputsets -> aim for a more generic structure (where a get_set_kf function can be created!)
+
+        #function to reset intra-year reportings to eoy
+        def get_eoy_index(comp,ki):
+            print("some periods are reported not at end of the year for " + comp.ticker + " and will be reset to eoy")
+            periods_eoy = []  # pd.DataFrame(len=ki.index#.to_pydatetime
+            for t in range(len(list(ki.index))):
+                periods_eoy.append(pd.to_datetime(dt.date(ki.index.year[t], 12, 31)))
+            return periods_eoy
 
         #collect  keyinput_information for all companies into ki_a
         initialize_output_array = True
         for comp in all_companies:
             try:
                 ki = comp.pivot_keyinputs_of_set(chosen_set=keyinputset)  # keyinputs
+                #make sure eoy index used
+                if any(ki.index.month != 12):
+                    ki.index = get_eoy_index(comp, ki)
                 if initialize_output_array:
                     # initialize 3d Dataframe to store keyinput data (kid)
                     # do with select distinct?
                     empty_arr = np.full(fill_value=np.nan,shape=(len(ki.index),len(ki.columns),len(all_companies)))
-                    keyinputs = ki.columns.values
-                    periods = ki.index.values
-                    #put ki into 3d array for all keyinputs ki_a
                     ki_a = xr.DataArray(data=empty_arr, dims=[ "period","keyinput","company"],
-                                           coords=[("period", periods),("keyinput", keyinputs),("company",all_tickers)
+                                           coords=[("period", ki.index),("keyinput", ki.columns.values),("company",all_tickers)
                                        ])  # xr.Dataset() #http://xarray.pydata.org/en/stable/pandas.html#pandas
                     #ki_a = xr.DataArray(kid,dims=[ "keyinput", "period","company"])
                     initialize_output_array = False
-
                 else:
                     #check if ki_a still accomodates all periods and keyinputs
-                    lacking_columns=np.setdiff1d(np.array(ki.columns) , np.array(ki_a.get_index("keyinput")))
-                    lacking_periods = np.setdiff1d(np.array(ki.index), np.array(ki_a.get_index("period")))
+                    keyinputs = ki_a.get_index("keyinput")
+                    periods = ki_a.get_index("period")
+                    lacking_columns=np.setdiff1d(np.array(ki.columns) , np.array(keyinputs))
+                    lacking_periods = np.setdiff1d(np.array(ki.index), np.array(periods))
                     if len(lacking_columns)>0 or len(lacking_periods)>0:
                         if len(lacking_columns)>0:
                             #add lacking keyinput into ki_a
@@ -459,8 +470,8 @@ class Company():
         return kf_val
 
         # example
-        # cls = Company
-        # kf='Operating Earnings'
+        # cls = arb_comp.__class__;  kf='Operating Earnings'
+
 
     @staticmethod
     def remove_all_companies():
@@ -469,7 +480,6 @@ class Company():
 
 
 if __name__ == '__main__':
-    Company.remove_all_companies()
     #  ticker = ["URW.AS","LI.PA","VALN.SW","FHZN.SW"] # for debugging
     #  for i in ticker:
     #      i = Company(i)
@@ -479,6 +489,8 @@ if __name__ == '__main__':
     #  Company.compare(start="2015-01-05", end="2020-08-12")
     #  fig = i.compare(start="2020-01-05", end="2020-08-12")
     #  fig.show()
+    Company.remove_all_companies()
+    Ni=Company("NKLA")
     N = Company("NESN.SW")
     T = Company("TRUP")
     G=Company("GUR.SW")
@@ -492,12 +504,88 @@ if __name__ == '__main__':
     mv_all=N.get_mvs(hist_dates = f_pvt.index)
     kf_all=Company.get_kf('AssetBase')
     ytfv=N.get_val(kf_all,mv_all,'equ_v')
-    ytfv.plot()
-    V=Company.get_vals(['NetIncome', 'AssetBase'])#, 'Operating Earnings'])
-    V[:,:,0].to_pandas().plot()
+    #ytfv.plot()
+    V=Company.get_vals(['AssetBase'])#, 'Operating Earnings'])
+    #V[:,:,0].to_pandas().plot()
+    #V.loc[:,"AssetBase",:].to_pandas().plot()
+
+    #plot it
+    import plotly.io as pio
+    import plotly.express as px
+    pio.renderers.default = "browser"
+
+    df=V.loc[:,"AssetBase",:].to_pandas()
+    f=px.line(df,x=df.index,y=df.columns, labels={"value": "kf", "variable": "company"})
+    f.show()
+
 
     all_kf=['AssetBase','Operating Earnings', 'Operating Earnings incl non-core', 'Operating Earnings after capex','Operating Earnings Equ', 'Operating Earnings Equ incl non-core', 'Operating Earnings after capex Equ','NetIncome', 'operating CF', 'operating CF after capex']
-    Vall=Company.get_vals(all_kf)
-    Vall.loc[:,'AssetBase', :].to_pandas().plot()
+    chosen_kf=['AssetBase','Operating Earnings','operating CF','NetIncome']
+    Vall=Company.get_vals(chosen_kf)
+
+    f=Vall.loc[:,['NetIncome','AssetBase','Operating Earnings'],:].plot.line(x="period",col="kf",col_wrap=3)
+
+    #fm=mpl_to_plotly(f)
+   # f = xr.plot.FacetGrid(Vall.loc[:, ['NetIncome', 'AssetBase'], :], col="kf", col_wrap=3)
+    import matplotlib.pyplot as plt
+    #f=f.fig.savefig("test_rasterizationf.svg")
     #radar plot or parallel coordinates plot.
     #https://xarray-contrib.github.io/xarray-tutorial/scipy-tutorial/04_plotting_and_visualization.html
+
+
+
+    import matplotlib.pyplot as plt
+    #TESTCASE for Dash
+
+    #initialize companies
+    Company.remove_all_companies()
+    # recent test
+    query = "select *  from issues_yh_now_selected"
+    sys.path.append(r'C:\Users\MichaelSchwarz\PycharmProjects\FinanceProjects')
+    import MyFuncGeneral as my
+
+    sys.path.append(r'C:/Users/MichaelSchwarz/PycharmProjects/FinanceProjects/StockSelection')
+    import CompanyClass as c
+
+    cnx = my.cnx_mysqldb('fuyu')
+    comps = pd.read_sql(query, con=cnx)
+    Company.remove_all_companies()  # remove all companies before new ones are created!
+    if len(comps) == 0 or len(comps) > 20:
+        print("none or too many (>20) companies selected to display - correct in livecode")
+    else:
+        for i in comps['Ticker_yahoo']:
+            try:
+                cobj = Company(i)
+            except:
+                print("For selected Company " + i + " the Company-Object could not be generated")
+
+    arb_comp = cobj
+
+    chosen_kf = ['AssetBase', 'Operating Earnings', 'operating CF', 'NetIncome']
+    VAL = arb_comp.get_vals(chosen_kf)
+    df = VAL.loc[:, chosen_kf[0], :].to_pandas()
+    df = df.melt(ignore_index=False)
+
+    #plot it
+    import plotly.io as pio
+    import pandas as pd
+    import plotly.express as px
+    pio.renderers.default = "browser"
+    fig = px.line(df, x=df.index, y='value',color="company", labels={"value": "kf", "variable": "company"})
+    fig.show()
+    df = VAL.sel(period=max(VAL._getitem_coord("period"))).to_pandas()
+    df = df.melt(ignore_index=False)
+    fig = px.line_polar(df, r="value", theta=df.index, color="company", line_close=True,
+                        color_discrete_sequence=px.colors.sequential.Plasma_r)
+    fig.show()
+
+    if isinstance(chosen_kf, str):
+        chosen_kf = [chosen_kf]
+    VAL = arb_comp.get_vals(chosen_kf)
+    df = VAL.sel(period=max(VAL._getitem_coord("period"))).to_pandas()
+    df = df.melt(ignore_index=False)
+    fig_spyder = px.line_polar(df, r="value", theta=df.index, color="company", line_close=True,
+                               color_discrete_sequence=px.colors.sequential.Plasma_r)
+    fig_spyder.show()
+
+
