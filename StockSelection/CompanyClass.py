@@ -130,11 +130,6 @@ class Company():
         Company.population -= 1
 
     @classmethod
-    def how_many(cls):
-        """Prints the current number of companies."""
-        print("We have {:d} companies.".format(cls.population))
-
-    @classmethod
     def current_population_members(cls):
         memb = {instance.ticker for instance in cls.instances}
         return list(memb)
@@ -289,8 +284,14 @@ class Company():
         assert(kftype in ['equ_v','ent_v'])
         assert (WACC is None or WACC == 'hist' or isinstance(WACC, float))
 
-        #project kfv in the future if still lacking
-        kfv.loc[max(mvs['equ_v'].index)]=kfv.loc[max(kfv.index),:]
+        #project latest available kfv
+        kfv.loc[max(mvs['equ_v'].index)]=np.nan
+        for c in kfv.columns:
+            kfvc=kfv.loc[kfv.loc[:,c].notna(),c]
+            if any(kfvc):
+                kfv.loc[max(mvs['equ_v'].index),c] = kfvc.loc[max(kfvc.index)]
+            kfvc=[]
+
 
         #get parameters for rate calculations
         ent_v = mvs['ent_v']
@@ -396,8 +397,9 @@ class Company():
                                                         coords=[("period", periods),("keyinput", np.array([lc])),("company",all_tickers)
                                                         ])
                                 ki_a = xr.concat([ki_a,this_empty_fill_arr],dim="keyinput")
+                                print("added keyinput "+lc +" as company "+comp.ticker +"has data there")
                             keyinputs = ki_a.get_index("keyinput").values
-                        elif len(lacking_periods)>0:
+                        if len(lacking_periods)>0:
                             #add lacking periods into ki_a
                             empty_fill_arr = np.full(fill_value=np.nan,shape=(1, len(ki_a.get_index("keyinput")), len(ki_a.get_index("company"))))
                             for lp in lacking_periods:
@@ -405,6 +407,7 @@ class Company():
                                                         coords = [("period", np.array([lp])), ("keyinput",keyinputs ), ("company", all_tickers)
                                                 ])
                                 ki_a = xr.concat([ki_a, this_empty_fill_arr], dim="period")
+                                print("added period " + str(lp) + " as company " + comp.ticker + " has data there")
                             periods = ki_a.get_index("period").values
                     else:
                         None
@@ -493,6 +496,7 @@ if __name__ == '__main__':
     Ni=Company("NKLA")
     N = Company("NESN.SW")
     T = Company("TRUP")
+    L = Company("LIT.AX")
     G=Company("GUR.SW")
     mv_N = N.get_mv()
     A = Company('ALB')
@@ -515,6 +519,7 @@ if __name__ == '__main__':
     pio.renderers.default = "browser"
 
     df=V.loc[:,"AssetBase",:].to_pandas()
+    df = df.melt(ignore_index=False)
     f=px.line(df,x=df.index,y=df.columns, labels={"value": "kf", "variable": "company"})
     f.show()
 

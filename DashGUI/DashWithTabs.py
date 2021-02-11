@@ -112,7 +112,17 @@ def render_content(tab):
         ])
     elif tab == 'tab-2':
         return html.Div([
-            html.H3('Relative valuation according to keyfigure'),
+            dcc.Dropdown(
+                id='cluster-id',
+                options=['Cluster'],
+                value='Cluster'
+            ),
+            dcc.Dropdown(
+                id='ShowValuationAs-id',
+                options=['YtFV'],
+                value='YtFV'
+            )
+            ,
             html.Div([
                 html.Div([
                     html.H6('Historic One Keyfigure'),
@@ -166,7 +176,6 @@ def update_output(value):
     [dash.dependencies.Input('kfdropdown-id', 'value')]
 )
 def update_val_output_div(chosen_kf):
-    hist_kf=chosen_kf
     val = arb_comp.get_vals([chosen_kf])[:, 0, :].to_pandas()
     df = val.melt(ignore_index=False)
     fig_histval = px.line(df, x=df.index, y="value", color="company", labels={"value": "YtFV", "variable": "company",
@@ -186,7 +195,7 @@ def update_val_output_div(chosen_kf):
     df = VAL.sel(period=max(VAL._getitem_coord("period"))).to_pandas()
     df = df.melt(ignore_index=False)
     fig_spyder = px.line_polar(df, r="value", theta=df.index, color="company", line_close=True,
-                               color_discrete_sequence=px.colors.sequential.Plasma_r)
+                        color_discrete_sequence=px.colors.sequential.Plasma_r)
     return fig_spyder
 
 #tab3
