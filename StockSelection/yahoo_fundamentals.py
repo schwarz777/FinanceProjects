@@ -116,55 +116,54 @@ def scrape(symbol):
 def update_db(symbol, addLackingFK=False):
     """ update the mysql data with possible newer data """
     df = scrape(symbol)
+    sys.path.append(r'C:\Users\MichaelSchwarz\PycharmProjects\FinanceProjects')
+    import MyFuncGeneral as My
+    cnx = My.cnx_mysqldb('fuyu_jibengong')
     for t in df['Date']:
         updi = df.loc[df['Date'] == t]
         updi = updi.iloc[:, 3:]
         if t != 'ttm':  # ignore ttm column!
             # check if statement available and get id
             ped = dt.datetime.strptime(str(t), '%m/%d/%Y')  # period end date
-            sys.path.append(r'C:\Users\MichaelSchwarz\PycharmProjects\FinanceProjects')
-            import MyFuncGeneral as My
-            cnx = My.cnx_mysqldb('fuyu_jibengong')
             cursor = cnx.cursor()
             cursor.callproc('fuyu_jibengong.usp_py_get_statement_id', ['yahoo', My.date2mysqldatestring(ped), symbol])
             cnx.commit()
             statement_id = [r.fetchall() for r in cursor.stored_results()][0][0][0]
-
-        for (columnName, columnData) in updi.iteritems():
-            if np.isnan(columnData.values) == False:
-                # check what is the std_item id of the yahoo fundamental item
-                q_check_std_id = "select std_item_id from fuyu_jibengong.std_items where fk_datasource = 'yahoo' and std_item_name = '" + columnName + "'"
-                std_id = pd.read_sql(q_check_std_id, cnx)
-                if std_id.empty:
-                    if addLackingFK:
-                        print("try to add lacking foreign key")
-                        try:
-                            q_addFK = "insert into fuyu_jibengong.std_items(std_item_name,fk_datasource) values ('" + columnName + "' , 'yahoo' )"
-                            cursor.execute(q_addFK)
-                            cnx.commit()
-                            # get created id
-                            std_id = pd.read_sql('SELECT LAST_INSERT_ID()', cnx)
-                            print("successfully added FK for : " + columnName)
-                        except:
-                            print("something went wrong adding new std_item: " + columnName)
-                    else:
-                        print("no id found will lead to error: Activate addLackingFK to insert new item names")
-                # add the new data item
-                query = ("replace into std_fundamentals(fk_statement,fk_std_item,std_value) values (" +
-                         str(statement_id) + ", '" + str(std_id.iloc[0,0]) + "' ," + str(columnData.values[0]) + ")")
-                try:
-                    cursor.execute(query)
-                    cnx.commit()
-                    print("successfully added/updated stmt_id " + str(statement_id) + ''", '" + columnName + "' , " +
-                          str(columnData.values[0]))
-                except:
-                    print("Not added, probably FK fails for:" + str(statement_id) + ''", '" + columnName + "' , " + str(
-                        columnData.values[0]))
+            for (columnName, columnData) in updi.iteritems():
+                if np.isnan(columnData.values) == False:
+                    # check what is the std_item id of the yahoo fundamental item
+                    q_check_std_id = "select std_item_id from fuyu_jibengong.std_items where fk_datasource = 'yahoo' and std_item_name = '" + columnName + "'"
+                    std_id = pd.read_sql(q_check_std_id, cnx)
+                    if std_id.empty:
+                        if addLackingFK:
+                            print("try to add lacking foreign key")
+                            try:
+                                q_addFK = "insert into fuyu_jibengong.std_items(std_item_name,fk_datasource) values ('" + columnName + "' , 'yahoo' )"
+                                cursor.execute(q_addFK)
+                                cnx.commit()
+                                # get created id
+                                std_id = pd.read_sql('SELECT LAST_INSERT_ID()', cnx)
+                                print("successfully added FK for : " + columnName)
+                            except:
+                                print("something went wrong adding new std_item: " + columnName)
+                        else:
+                            print("no id found will lead to error: Activate addLackingFK to insert new item names")
+                    # add the new data item
+                    query = ("replace into std_fundamentals(fk_statement,fk_std_item,std_value) values (" +
+                             str(statement_id) + ", '" + str(std_id.iloc[0,0]) + "' ," + str(columnData.values[0]) + ")")
+                    try:
+                        cursor.execute(query)
+                        cnx.commit()
+                        print("successfully added/updated stmt_id for period "+t +", statement id: " + str(statement_id) + ''", '" + columnName + "' , " +
+                              str(columnData.values[0]))
+                    except:
+                        print("Not added, probably FK fails for:" + str(statement_id) + ''", '" + columnName + "' , " + str(
+                            columnData.values[0]))
     cnx.close()
 
 
 if __name__ == '__main__':
-    symbol = 'ALB'
+    symbol = 'NKLA'
     # df = scrape(symbol)
     # df.transpose()
-    update_db(symbol,addLackingFK = False)
+    update_db(symbol,addLackingFK = True)
