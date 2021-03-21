@@ -53,9 +53,11 @@ class Company():
                 "scenario_name = 'None' "
         # todo: dont filter for scenario_name but build scenario alternative properly!!!
         self.Fundamentals = pd.read_sql(query, con=cnx)
-        if(self.Fundamentals.empty):
+        if self.Fundamentals.empty:
             yhf.update_db(self.ticker,addLackingFK=True)
-        #elif(dt.year(max(self.Fundamentals.index)) < 2019 )
+        elif max(self.Fundamentals["period_end_date"]).year < dt.date.today().year-1:
+            yhf.update_db(self.ticker, addLackingFK=True)
+
         self.Fundamentals = pd.read_sql(query, con=cnx)
 
     def iam(self):
@@ -138,6 +140,7 @@ class Company():
     def get_mvs(cls, price_source='std_yahoo', keyinputset='Default', liability_keyinput='Liabilities_EV',
                 hist_dates=None):
         """get the market values for each instance in the class and put it in a dataframe """
+        assert(hist_dates is None or type(hist_dates)==pd.core.indexes.datetimes.DatetimeIndex )
         all_companies = cls.instances
         if hist_dates is not None:
             initialize_output_array = True
@@ -346,76 +349,95 @@ class Company():
         #WACC = 'hist'
 
     @classmethod
-    def get_kf(cls, kf, keyinputset='Default'):
-        """get different estimates for  Keyfigures depending on v_key_inputs_from_scenarios (ie Fundamentals)"""
-        # here the  logic on keyfigure calculation based on keyinputs is defined!
-        # each keyfigure is calculated for the whole population and across as certain inputs might be derived from population/historic  averages/medians!)
-
+    def align_pop_ki(cls, keyinputset='Default'):
+        """align the whole populations' keyinputs of the chosen set into 1 3D-Dataframe """
+        #(for easy cross-temporal or sector averaging)
         all_companies = cls.instances
-        assert(any(all_companies))
+        assert (any(all_companies))
         all_tickers = cls.current_population_members()
-        assert(len(all_tickers) == len(all_companies))
-        assert (keyinputset == 'Default')  # calculation still needs to be defined for other keyinputsets -> aim for a more generic structure (where a get_set_kf function can be created!)
+        assert (len(all_tickers) == len(all_companies))
+        assert (keyinputset == 'Default')  # todo calculation still needs to be defined for other keyinputsets
 
-        #function to reset intra-year reportings to eoy
-        def get_eoy_index(comp,ki):
+        # function to reset intra-year reportings to eoy
+        def get_eoy_index(comp, ki):
             print("some periods are reported not at end of the year for " + comp.ticker + " and will be reset to eoy")
             periods_eoy = []  # pd.DataFrame(len=ki.index#.to_pydatetime
             for t in range(len(list(ki.index))):
                 periods_eoy.append(pd.to_datetime(dt.date(ki.index.year[t], 12, 31)))
             return periods_eoy
 
-        #collect  keyinput_information for all companies into ki_a
+        # collect  keyinput_information for all companies into ki_a
         initialize_output_array = True
         for comp in all_companies:
             try:
                 ki = comp.pivot_keyinputs_of_set(chosen_set=keyinputset)  # keyinputs
-                #make sure eoy index used
+                # make sure eoy index used
                 if any(ki.index.month != 12):
                     ki.index = get_eoy_index(comp, ki)
                 if initialize_output_array:
                     # initialize 3d Dataframe to store keyinput data (kid)
                     # do with select distinct?
-                    empty_arr = np.full(fill_value=np.nan,shape=(len(ki.index),len(ki.columns),len(all_companies)))
-                    ki_a = xr.DataArray(data=empty_arr, dims=[ "period","keyinput","company"],
-                                           coords=[("period", ki.index),("keyinput", ki.columns.values),("company",all_tickers)
-                                       ])  # xr.Dataset() #http://xarray.pydata.org/en/stable/pandas.html#pandas
-                    #ki_a = xr.DataArray(kid,dims=[ "keyinput", "period","company"])
+                    empty_arr = np.full(fill_value=np.nan, shape=(len(ki.index), len(ki.columns), len(all_companies)))
+                    ki_a = xr.DataArray(data=empty_arr, dims=["period", "keyinput", "company"],
+                                        coords=[("period", ki.index), ("keyinput", ki.columns.values),
+                                                ("company", all_tickers)
+                                                ])  # xr.Dataset() #http://xarray.pydata.org/en/stable/pandas.html#pandas
+                    # ki_a = xr.DataArray(kid,dims=[ "keyinput", "period","company"])
                     initialize_output_array = False
                 else:
-                    #check if ki_a still accomodates all periods and keyinputs
+                    # check if ki_a still accomodates all periods and keyinputs
                     keyinputs = ki_a.get_index("keyinput")
                     periods = ki_a.get_index("period")
-                    lacking_columns=np.setdiff1d(np.array(ki.columns) , np.array(keyinputs))
+                    lacking_columns = np.setdiff1d(np.array(ki.columns), np.array(keyinputs))
                     lacking_periods = np.setdiff1d(np.array(ki.index), np.array(periods))
-                    if len(lacking_columns)>0 or len(lacking_periods)>0:
-                        if len(lacking_columns)>0:
-                            #add lacking keyinput into ki_a
-                            empty_fill_arr = np.full(fill_value=np.nan,shape=(len(ki_a.get_index("period")),1,len(ki_a.get_index("company"))))
+                    if len(lacking_columns) > 0 or len(lacking_periods) > 0:
+                        if len(lacking_columns) > 0:
+                            # add lacking keyinput into ki_a
+                            empty_fill_arr = np.full(fill_value=np.nan, shape=(
+                            len(ki_a.get_index("period")), 1, len(ki_a.get_index("company"))))
                             for lc in lacking_columns:
-                                this_empty_fill_arr = xr.DataArray(data=empty_fill_arr, dims=[ "period","keyinput","company"],
-                                                        coords=[("period", periods),("keyinput", np.array([lc])),("company",all_tickers)
-                                                        ])
-                                ki_a = xr.concat([ki_a,this_empty_fill_arr],dim="keyinput")
-                                print("added keyinput "+lc +" as company "+comp.ticker +"has data there")
+                                this_empty_fill_arr = xr.DataArray(data=empty_fill_arr,
+                                                                   dims=["period", "keyinput", "company"],
+                                                                   coords=[("period", periods),
+                                                                           ("keyinput", np.array([lc])),
+                                                                           ("company", all_tickers)
+                                                                           ])
+                                ki_a = xr.concat([ki_a, this_empty_fill_arr], dim="keyinput")
+                                print("added keyinput " + lc + " as company " + comp.ticker + "has data there")
                             keyinputs = ki_a.get_index("keyinput").values
-                        if len(lacking_periods)>0:
-                            #add lacking periods into ki_a
-                            empty_fill_arr = np.full(fill_value=np.nan,shape=(1, len(ki_a.get_index("keyinput")), len(ki_a.get_index("company"))))
+                        if len(lacking_periods) > 0:
+                            # add lacking periods into ki_a
+                            empty_fill_arr = np.full(fill_value=np.nan, shape=(
+                            1, len(ki_a.get_index("keyinput")), len(ki_a.get_index("company"))))
                             for lp in lacking_periods:
-                                this_empty_fill_arr = xr.DataArray(data=empty_fill_arr, dims=["period", "keyinput", "company"],
-                                                        coords = [("period", np.array([lp])), ("keyinput",keyinputs ), ("company", all_tickers)
-                                                ])
+                                this_empty_fill_arr = xr.DataArray(data=empty_fill_arr,
+                                                                   dims=["period", "keyinput", "company"],
+                                                                   coords=[("period", np.array([lp])),
+                                                                           ("keyinput", keyinputs),
+                                                                           ("company", all_tickers)
+                                                                           ])
                                 ki_a = xr.concat([ki_a, this_empty_fill_arr], dim="period")
                                 print("added period " + str(lp) + " as company " + comp.ticker + " has data there")
                             periods = ki_a.get_index("period").values
                     else:
                         None
-                        #nothing to do the ki_a - array also fits ki of this company
+                        # nothing to do the ki_a - array also fits ki of this company
                 ki_a.loc[ki.index, ki.columns, comp.ticker] = ki
             except:
                 print("loading for company " + comp.ticker + " failed - na values set instead")
-           # ki_a.loc[:, :, comp.ticker].to_pandas()
+        return ki_a
+        #example
+
+        # ki_a.loc[:, :, comp.ticker].to_pandas()
+
+    @classmethod
+    def get_kf(cls, kf, keyinputset='Default'):
+        """get different estimates for  Keyfigures depending on v_key_inputs_from_scenarios (ie Fundamentals)"""
+        # here the  logic on keyfigure calculation based on keyinputs is defined!
+        # each keyfigure is calculated for the whole population and across as certain inputs might be derived from population/historic  averages/medians!)
+
+        ki_a = cls.align_pop_ki(keyinputset)
+
         # todo calc  avg  across sections time for use to calc certain figures!
         # start to calculate kf values across periods and companies (simultaneously from 3d ki_a!)
         def ki_ (ki,Na2Zero=True):
@@ -425,6 +447,7 @@ class Company():
             return ki
 
         try:  #calculation will only work if the required keyinputs are there for at least some companies!
+            #todo: here add switch for different keyinputsets than 'Default' (for same kf- or different kf-set)!!!
             if kf in ['AssetBase']:
                 if kf == 'AssetBase':
                     kf_val = ki_('AssetBase',Na2Zero=False)
@@ -473,8 +496,7 @@ class Company():
         return kf_val
 
         # example
-        # cls = arb_comp.__class__;  kf='Operating Earnings'
-
+        # cls = N.__class__;  kf='Operating Earnings'
 
     @staticmethod
     def remove_all_companies():
@@ -483,33 +505,27 @@ class Company():
 
 
 if __name__ == '__main__':
-    #  ticker = ["URW.AS","LI.PA","VALN.SW","FHZN.SW"] # for debugging
-    #  for i in ticker:
-    #      i = Company(i)
-    #  #c1 = Company("IES.L")
-    #  CurrentUniverse = {id(instance): instance.ticker for instance in Company.instances}
-    #  Company.how_many()
-    #  Company.compare(start="2015-01-05", end="2020-08-12")
-    #  fig = i.compare(start="2020-01-05", end="2020-08-12")
-    #  fig.show()
+    #easy examples
+    #initialize companies
     Company.remove_all_companies()
+    A = Company('ALB')
     Ni=Company("NKLA")
     N = Company("NESN.SW")
     T = Company("TRUP")
     L = Company("LIT.AX")
     G=Company("GUR.SW")
-    mv_N = N.get_mv()
-    A = Company('ALB')
-    mvA = N.get_mv()
-    f_pvt = N.pivot_keyinputs_of_set()
-    f_pvtA=A.pivot_keyinputs_of_set()
-    N.get_kf('NetIncome')
+
+    #do some  calculations
+    print(N.get_mv())
+    Ni_ki=Ni.pivot_keyinputs_of_set()
+    # print(N.get_kf('NetIncome'))
     mv_now = Company.get_mvs()
-    mv_all=N.get_mvs(hist_dates = f_pvt.index)
+    mv_all=Ni.get_mvs(hist_dates = Ni_ki.index)
+
     kf_all=Company.get_kf('AssetBase')
     ytfv=N.get_val(kf_all,mv_all,'equ_v')
     #ytfv.plot()
-    V=Company.get_vals(['AssetBase'])#, 'Operating Earnings'])
+    V=Company.get_vals(['AssetBase']) #, 'Operating Earnings'])
     #V[:,:,0].to_pandas().plot()
     #V.loc[:,"AssetBase",:].to_pandas().plot()
 
@@ -518,28 +534,13 @@ if __name__ == '__main__':
     import plotly.express as px
     pio.renderers.default = "browser"
 
-    df=V.loc[:,"AssetBase",:].to_pandas()
-    df = df.melt(ignore_index=False)
-    f=px.line(df,x=df.index,y=df.columns, labels={"value": "kf", "variable": "company"})
-    f.show()
-
-
     all_kf=['AssetBase','Operating Earnings', 'Operating Earnings incl non-core', 'Operating Earnings after capex','Operating Earnings Equ', 'Operating Earnings Equ incl non-core', 'Operating Earnings after capex Equ','NetIncome', 'operating CF', 'operating CF after capex']
     chosen_kf=['AssetBase','Operating Earnings','operating CF','NetIncome']
     Vall=Company.get_vals(chosen_kf)
 
     f=Vall.loc[:,['NetIncome','AssetBase','Operating Earnings'],:].plot.line(x="period",col="kf",col_wrap=3)
 
-    #fm=mpl_to_plotly(f)
-   # f = xr.plot.FacetGrid(Vall.loc[:, ['NetIncome', 'AssetBase'], :], col="kf", col_wrap=3)
-    import matplotlib.pyplot as plt
-    #f=f.fig.savefig("test_rasterizationf.svg")
-    #radar plot or parallel coordinates plot.
-    #https://xarray-contrib.github.io/xarray-tutorial/scipy-tutorial/04_plotting_and_visualization.html
 
-
-
-    import matplotlib.pyplot as plt
     #TESTCASE for Dash
 
     #initialize companies
