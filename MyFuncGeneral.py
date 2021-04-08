@@ -25,15 +25,16 @@ def get_last_close(ticker, pricesource='yahoo'):
     to_d = d.date.today()
     from_d = to_d - d.timedelta(days=10)
     try:
-        px = pdr.DataReader(ticker, 'yahoo', from_d, to_d)
+        px = pdr.DataReader(ticker, pricesource, from_d, to_d)
         pxs = pd.to_numeric(px.loc[:, "Adj Close"])
-        return pxs.last('1D')
+        res = pxs.last('1D')
     except:
+        res = False
         print("unable loading", ticker, "from ", from_d, "to ", to_d)
-
+    return res
     # example:
     # ticker = 'URW.AS'
-    # get_last_close('URW.AS')
+    # get_last_close('URW.AS','yahoo')
 
 
 # db connection
@@ -174,3 +175,52 @@ def fill_up_series_with_closest(long_series:pd.Series, short_series:pd.DataFrame
     #long_series= pd.Series(range(20),index=pd.date_range('2018-09-01', periods=20, freq='m'),name='long')
     #short_series =pd.Series(range(1,5),index=pd.date_range('2017-01-01',periods=4,freq='y'),name='short')
     #fill_up_series_with_closest(long_series,short_series.to_frame())
+
+
+def run_test_loops(func,vararg:dict,plot_comparison=True):
+    """loop through function with all combinations of the various inputs given in vararg as list of lists
+
+    """
+    #check if the given arguments match the function names
+    import inspect
+    func_param_names=inspect.getfullargspec(func).args
+    assert(set(list(vararg.keys())).issubset(func_param_names))
+
+    # create SET matrix of all combinations of settings
+    #define expand grid function
+    from itertools import product
+    def expand_grid(dictionary):
+        return pd.DataFrame([row for row in product(*dictionary.values())],
+                            columns=dictionary.keys())
+
+    SET = expand_grid(vararg)
+
+    #loop through each row of Settings executing the function and store the 1st given result
+
+    for i, row in SET.iterrows():
+        print("START setting " + str(i) +": ")
+        print(row.to_frame().T)
+        #create function execution string
+        codestring = str(func.__name__) +"("
+        for v in vararg.keys():
+            codestring = codestring + "row." + v
+            if v !=list(vararg.keys())[-1]:
+                codestring=codestring + ","
+        codestring = codestring + ")"
+        print("RESULT setting" + str(i) + ":")
+        exec("res="+codestring)
+        exec("print(res)")
+
+
+
+    #comparison plots of results
+
+if __name__ == '__main__':
+    # test run_test_loops
+    func=get_last_close
+    vararg={'ticker':["ALB","IBM"],'pricesource':["bb","yahoo"]}
+    run_test_loops(func,vararg)
+    #get_last_close("ALB","bb")
+    func=get_tickers_history
+    vararg={'tick_list':["ALB"],'start':["2012-12-31","2020-12-31"]}
+    run_test_loops(func, vararg)
